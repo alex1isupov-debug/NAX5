@@ -93,6 +93,26 @@ done
 
 windeployqt6.exe --no-translations --qmldir="$qml_dir" "$output_dir/$(basename "$exe_path")"
 
+# Qt plugins are added after the executable dependency walk. Include their
+# dependencies, and any transitive dependencies, in the portable directory.
+while IFS= read -r -d '' plugin; do
+    queue+=("$plugin")
+done < <(find "$output_dir" -type f -iname '*.dll' -print0)
+
+while [[ ${#queue[@]} -gt 0 ]]; do
+    current="${queue[0]}"
+    queue=("${queue[@]:1}")
+
+    if [[ -n "${scanned_paths["$current"]+x}" ]]; then
+        continue
+    fi
+    scanned_paths["$current"]=1
+
+    while IFS= read -r dependency; do
+        enqueue_dependency "$dependency"
+    done < <(extract_dependencies "$current")
+done
+
 # Remove system-provided DLLs that Windows already supplies and
 # should not be bundled with the MSYS2 build (e.g. D3D compiler). Use
 # case-insensitive globbing to catch variants like `D3Dcompiler_47`.
