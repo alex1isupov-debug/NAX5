@@ -120,3 +120,13 @@ done
     shopt -s nocaseglob
     rm -f "$output_dir"/d3dcompiler*.dll
 )
+
+# Include the source license and downstream attribution/test notices in the
+# portable NAX5 distribution.
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source_root="$(cd "$script_dir/.." && pwd)"
+cp "$source_root/COPYING" "$output_dir/COPYING"
+cp -a "$source_root/LICENSES" "$output_dir/LICENSES"
+cp "$source_root/UPSTREAM.md" "$output_dir/UPSTREAM.md"
+cp "$source_root/THIRD-PARTY-NOTICES.md" "$output_dir/THIRD-PARTY-NOTICES.md"
+cp "$source_root/ALPHA01-USER-TEST.md" "$output_dir/ALPHA01-USER-TEST.md"
