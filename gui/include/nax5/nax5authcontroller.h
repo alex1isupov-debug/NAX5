@@ -37,6 +37,8 @@ public:
     QString accessStatus() const { return access_status; }
     bool emailVerified() const { return email_verified; }
 
+    QString sessionToken() const { return session_token; }
+
     Q_INVOKABLE void login(const QString &email, const QString &password);
     Q_INVOKABLE void logout();
 

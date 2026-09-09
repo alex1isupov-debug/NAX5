@@ -1,0 +1,84 @@
+#pragma once
+
+#include "nax5/session/nax5sessionerror.h"
+#include "nax5/session/nax5sessionstate.h"
+
+#include <QObject>
+#include <QString>
+
+class Nax5ApiClient;
+class Nax5AuthController;
+struct Nax5SessionParseResult;
+class QTimer;
+
+class Nax5SessionController : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(int state READ state NOTIFY stateChanged)
+    Q_PROPERTY(bool reserving READ reserving NOTIFY stateChanged)
+    Q_PROPERTY(bool reserved READ reserved NOTIFY stateChanged)
+    Q_PROPERTY(bool cancelling READ cancelling NOTIFY stateChanged)
+    Q_PROPERTY(bool playEnabled READ playEnabled NOTIFY stateChanged)
+    Q_PROPERTY(bool releaseEnabled READ releaseEnabled NOTIFY stateChanged)
+    Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
+    Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
+    Q_PROPERTY(QString consoleCode READ consoleCode NOTIFY assignmentChanged)
+    Q_PROPERTY(QString consoleRegion READ consoleRegion NOTIFY assignmentChanged)
+    Q_PROPERTY(QString sessionId READ sessionId NOTIFY assignmentChanged)
+
+public:
+    explicit Nax5SessionController(Nax5AuthController *auth, QObject *parent = nullptr);
+    ~Nax5SessionController();
+
+    int state() const { return static_cast<int>(session_state); }
+    bool reserving() const { return session_state == Nax5GameSessionStateReserving; }
+    bool reserved() const { return session_state == Nax5GameSessionStateReserved; }
+    bool cancelling() const { return session_state == Nax5GameSessionStateCancelling; }
+    bool playEnabled() const;
+    bool releaseEnabled() const { return nax5SessionCanRelease(session_state); }
+    QString statusText() const { return status_text; }
+    QString errorMessage() const { return error_message; }
+    QString consoleCode() const { return console_code; }
+    QString consoleRegion() const { return console_region; }
+    QString sessionId() const { return session_id; }
+
+    Q_INVOKABLE void play();
+    Q_INVOKABLE void release();
+    Q_INVOKABLE void releaseAndLogout();
+    void cancelBestEffort();
+
+signals:
+    void stateChanged();
+    void statusTextChanged();
+    void errorMessageChanged();
+    void assignmentChanged();
+
+private:
+    void setState(Nax5GameSessionState next);
+    void setStatusText(const QString &text);
+    void setError(Nax5SessionError error);
+    void clearAssignment();
+    void applyAssignment(const Nax5SessionParseResult &result);
+    void resetLocal();
+    void syncCurrent();
+    void scheduleLeaseSync(const QString &lease_expires_at);
+    void onAuthStateChanged();
+    void onReserveFinished(quint64 request_id, const Nax5SessionParseResult &result);
+    void onCurrentFinished(quint64 request_id, const Nax5SessionParseResult &result);
+    void onCancelFinished(quint64 request_id, const Nax5SessionParseResult &result);
+
+    Nax5AuthController *auth;
+    Nax5ApiClient *api;
+    QTimer *lease_timer;
+    Nax5GameSessionState session_state;
+    QString status_text;
+    QString error_message;
+    QString console_code;
+    QString console_region;
+    QString session_id;
+    QString idempotency_key;
+    quint64 reserve_request_id;
+    quint64 current_request_id;
+    quint64 cancel_request_id;
+    bool ignore_cancel_result;
+};
