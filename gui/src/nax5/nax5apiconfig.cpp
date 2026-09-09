@@ -44,9 +44,9 @@ QUrl Nax5ApiConfig::baseUrl(QString *error_message)
 QString Nax5ApiConfig::userAgent()
 {
 #ifdef Q_OS_WIN
-    return QStringLiteral("NAX5/0.2 Windows");
+    return QStringLiteral("NAX5/0.3 Windows");
 #else
-    return QStringLiteral("NAX5/0.2");
+    return QStringLiteral("NAX5/0.3");
 #endif
 }
 

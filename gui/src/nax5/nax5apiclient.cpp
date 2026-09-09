@@ -37,7 +37,7 @@ void Nax5ApiClient::abortAll()
     reply->deleteLater();
 }
 
-QNetworkReply *Nax5ApiClient::sendJson(const QString &method, const QString &path, const QByteArray &body, const QString &session_token)
+QNetworkReply *Nax5ApiClient::sendJson(const QString &method, const QString &path, const QByteArray &body, const QString &session_token, const QByteArray &idempotency_key)
 {
     abortAll();
 
@@ -54,6 +54,8 @@ QNetworkReply *Nax5ApiClient::sendJson(const QString &method, const QString &pat
     request.setTransferTimeout(Nax5ApiConfig::requestTimeoutMs());
     if (!session_token.isEmpty())
         request.setRawHeader("X-Session-Token", session_token.toUtf8());
+    if (!idempotency_key.isEmpty())
+        request.setRawHeader("Idempotency-Key", idempotency_key);
 
     QNetworkReply *reply = nullptr;
     if (method == QLatin1String("POST"))
@@ -205,5 +207,149 @@ void Nax5ApiClient::finishLogout(quint64 request_id, QNetworkReply *reply)
     active_request_id = 0;
     active_kind = RequestNone;
     emit logoutFinished(request_id);
+    reply->deleteLater();
+}
+
+quint64 Nax5ApiClient::reserveSession(const QString &session_token, const QString &idempotency_key)
+{
+    const quint64 request_id = next_request_id++;
+    QNetworkReply *reply = sendJson(
+        QStringLiteral("POST"),
+        QStringLiteral("/api/v1/sessions/reserve/"),
+        QByteArray("{}"),
+        session_token,
+        idempotency_key.toUtf8());
+    if (!reply)
+    {
+        Nax5SessionParseResult result;
+        result.error = Nax5SessionErrorServerError;
+        emit reserveFinished(request_id, result);
+        return request_id;
+    }
+    active_reply = reply;
+    active_request_id = request_id;
+    active_kind = RequestReserve;
+    connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
+        finishReserve(request_id, reply);
+    });
+    return request_id;
+}
+
+quint64 Nax5ApiClient::fetchCurrentSession(const QString &session_token)
+{
+    const quint64 request_id = next_request_id++;
+    QNetworkReply *reply = sendJson(QStringLiteral("GET"), QStringLiteral("/api/v1/sessions/current/"), QByteArray(), session_token);
+    if (!reply)
+    {
+        emit currentFinished(request_id, Nax5SessionParseResult());
+        return request_id;
+    }
+    active_reply = reply;
+    active_request_id = request_id;
+    active_kind = RequestCurrent;
+    connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
+        finishCurrent(request_id, reply);
+    });
+    return request_id;
+}
+
+quint64 Nax5ApiClient::cancelSession(const QString &session_token, const QString &public_session_id)
+{
+    const quint64 request_id = next_request_id++;
+    const QString path = QStringLiteral("/api/v1/sessions/%1/cancel/").arg(public_session_id);
+    QNetworkReply *reply = sendJson(QStringLiteral("POST"), path, QByteArray("{}"), session_token);
+    if (!reply)
+    {
+        Nax5SessionParseResult result;
+        result.error = Nax5SessionErrorServerError;
+        emit cancelFinished(request_id, result);
+        return request_id;
+    }
+    active_reply = reply;
+    active_request_id = request_id;
+    active_kind = RequestCancel;
+    connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
+        finishCancel(request_id, reply);
+    });
+    return request_id;
+}
+
+Nax5SessionParseResult Nax5ApiClient::finishSessionNetwork(QNetworkReply *reply, bool *used_body)
+{
+    Nax5SessionParseResult result;
+    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if (reply->error() != QNetworkReply::NoError && status == 0)
+    {
+        result.error = nax5MapSessionHttpError(status, reply->error() == QNetworkReply::OperationCanceledError || reply->error() == QNetworkReply::TimeoutError, isNoNetwork(reply));
+        *used_body = false;
+        return result;
+    }
+    *used_body = true;
+    result.error = Nax5SessionErrorNone;
+    return result;
+}
+
+void Nax5ApiClient::finishReserve(quint64 request_id, QNetworkReply *reply)
+{
+    if (active_request_id != request_id)
+    {
+        reply->deleteLater();
+        return;
+    }
+    active_reply.clear();
+    active_request_id = 0;
+    active_kind = RequestNone;
+
+    bool used_body = false;
+    Nax5SessionParseResult result = finishSessionNetwork(reply, &used_body);
+    if (used_body)
+        result = nax5ParseReserveResponse(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(), reply->readAll());
+    if (result.error != Nax5SessionErrorNone)
+        qCWarning(nax5Api) << "reserve failed:" << result.error;
+    else
+        qCInfo(nax5Api) << "reserve ok" << result.session.id << result.console.code;
+    emit reserveFinished(request_id, result);
+    reply->deleteLater();
+}
+
+void Nax5ApiClient::finishCurrent(quint64 request_id, QNetworkReply *reply)
+{
+    if (active_request_id != request_id)
+    {
+        reply->deleteLater();
+        return;
+    }
+    active_reply.clear();
+    active_request_id = 0;
+    active_kind = RequestNone;
+
+    bool used_body = false;
+    Nax5SessionParseResult result = finishSessionNetwork(reply, &used_body);
+    if (used_body)
+        result = nax5ParseCurrentResponse(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(), reply->readAll());
+    emit currentFinished(request_id, result);
+    reply->deleteLater();
+}
+
+void Nax5ApiClient::finishCancel(quint64 request_id, QNetworkReply *reply)
+{
+    if (active_request_id != request_id)
+    {
+        reply->deleteLater();
+        return;
+    }
+    active_reply.clear();
+    active_request_id = 0;
+    active_kind = RequestNone;
+
+    bool used_body = false;
+    Nax5SessionParseResult result = finishSessionNetwork(reply, &used_body);
+    if (used_body)
+        result = nax5ParseCancelResponse(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(), reply->readAll());
+    if (result.error == Nax5SessionErrorNone)
+        qCInfo(nax5Api) << "cancel ok" << result.session.id;
+    else
+        qCWarning(nax5Api) << "cancel failed:" << result.error;
+    emit cancelFinished(request_id, result);
     reply->deleteLater();
 }
