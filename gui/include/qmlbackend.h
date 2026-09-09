@@ -21,6 +21,7 @@
 #endif
 
 class Nax5AuthController;
+class Nax5SessionController;
 class SystemdInhibit;
 #ifdef Q_OS_MACOS
     class MacWakeSleep;
@@ -287,6 +288,7 @@ private:
     QmlSettings *settings_qml = {};
     QmlMainWindow *window = {};
     Nax5AuthController *nax5_auth = {};
+    Nax5SessionController *nax5_session = {};
     StreamSession *session = {};
     QThread *frame_thread = {};
     QTimer *psn_reconnect_timer = {};

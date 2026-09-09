@@ -594,8 +594,14 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
             }
-            MainView {
+            Nax5PlayPanel {
+                id: nax5PlayPanel
                 anchors.top: nax5AccountBar.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+            }
+            MainView {
+                anchors.top: nax5PlayPanel.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom

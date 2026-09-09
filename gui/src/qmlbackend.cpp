@@ -7,6 +7,7 @@
 #include "psntoken.h"
 #include "systemdinhibit.h"
 #include "nax5/nax5authcontroller.h"
+#include "nax5/session/nax5sessioncontroller.h"
 #include "chiaki/remote/holepunch.h"
 #ifdef Q_OS_MACOS
 #include "macWakeSleep.h"
@@ -144,8 +145,10 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
 
     const char *uri = "org.streetpea.chiaking";
     nax5_auth = new Nax5AuthController(this);
+    nax5_session = new Nax5SessionController(nax5_auth, this);
     qmlRegisterSingletonInstance(uri, 1, 0, "Chiaki", this);
     qmlRegisterSingletonInstance(uri, 1, 0, "Nax5Auth", nax5_auth);
+    qmlRegisterSingletonInstance(uri, 1, 0, "Nax5Session", nax5_session);
     connect(nax5_auth, &Nax5AuthController::stateChanged, this, &QmlBackend::onNax5AuthStateChanged);
     qmlRegisterUncreatableType<QmlMainWindow>(uri, 1, 0, "ChiakiWindow", {});
     qmlRegisterUncreatableType<QmlSettings>(uri, 1, 0, "ChiakiSettings", {});

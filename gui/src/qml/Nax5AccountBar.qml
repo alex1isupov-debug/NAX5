@@ -38,7 +38,7 @@ ToolBar {
             text: qsTr("Выйти")
             flat: true
             Material.roundedScale: Material.SmallScale
-            onClicked: Nax5Auth.logout()
+            onClicked: Nax5Session.releaseAndLogout()
         }
     }
 }
