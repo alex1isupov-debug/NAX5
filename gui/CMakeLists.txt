@@ -49,6 +49,10 @@ set(SOURCE_FILES
 	src/nax5/nax5authparser.cpp
 	include/nax5/nax5apiclient.h
 	src/nax5/nax5apiclient.cpp
+	include/nax5/nax5authstate.h
+	src/nax5/nax5authstate.cpp
+	include/nax5/nax5authcontroller.h
+	src/nax5/nax5authcontroller.cpp
 	src/qml/qml.qrc
 	include/qmlmainwindow.h
 	src/qmlmainwindow.cpp
