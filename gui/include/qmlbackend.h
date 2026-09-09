@@ -20,6 +20,7 @@
 #include <QWebEngineUrlRequestInterceptor>
 #endif
 
+class Nax5AuthController;
 class SystemdInhibit;
 #ifdef Q_OS_MACOS
     class MacWakeSleep;
@@ -170,6 +171,7 @@ public:
     void setIsAppActive();
 
     void profileChanged();
+    bool nax5RemotePlayAllowed() const;
     bool prepareFrameForPresentation(ChiakiFfmpegFrame &frame, bool use_opengl_renderer);
 
     void goToSleep();
@@ -277,11 +279,14 @@ private:
     void resumeFromSleep();
     uint32_t getStreamShortcut() const;
     void updateStreamShortcut();
+    void onNax5AuthStateChanged();
+    void startNax5AutoConnectIfAllowed();
     QString getExecutable();
 
     Settings *settings = {};
     QmlSettings *settings_qml = {};
     QmlMainWindow *window = {};
+    Nax5AuthController *nax5_auth = {};
     StreamSession *session = {};
     QThread *frame_thread = {};
     QTimer *psn_reconnect_timer = {};

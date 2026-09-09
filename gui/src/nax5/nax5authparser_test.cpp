@@ -106,6 +106,13 @@ static void test_state_machine()
     expect(nax5AuthReduce(Nax5AuthStateAuthenticated, Nax5AuthActionLogout) == Nax5AuthStateUnauthenticated, "logout");
 }
 
+static void test_remote_play_requires_authenticated()
+{
+    expect(!nax5AuthAllowsRemotePlay(Nax5AuthStateUnauthenticated), "no remote play while logged out");
+    expect(!nax5AuthAllowsRemotePlay(Nax5AuthStateAuthenticating), "no remote play while logging in");
+    expect(nax5AuthAllowsRemotePlay(Nax5AuthStateAuthenticated), "remote play after login");
+}
+
 static void test_error_messages_are_user_facing()
 {
     const QString invalid = nax5AuthErrorMessage(Nax5AuthErrorInvalidCredentials);
@@ -132,6 +139,7 @@ int main()
     test_me_missing_fields();
     test_network_mapping();
     test_state_machine();
+    test_remote_play_requires_authenticated();
     test_error_messages_are_user_facing();
     test_default_api_url_is_https();
     if (g_failed)

@@ -130,3 +130,6 @@ cp -a "$source_root/LICENSES" "$output_dir/LICENSES"
 cp "$source_root/UPSTREAM.md" "$output_dir/UPSTREAM.md"
 cp "$source_root/THIRD-PARTY-NOTICES.md" "$output_dir/THIRD-PARTY-NOTICES.md"
 cp "$source_root/ALPHA01-USER-TEST.md" "$output_dir/ALPHA01-USER-TEST.md"
+if [[ -f "$source_root/ALPHA02-USER-TEST.md" ]]; then
+    cp "$source_root/ALPHA02-USER-TEST.md" "$output_dir/ALPHA02-USER-TEST.md"
+fi

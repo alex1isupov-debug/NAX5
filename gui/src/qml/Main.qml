@@ -133,7 +133,7 @@ Item {
             releaseInput();
             useSeparateStreamSettingsWindows = false;
         }
-        if (!Nax5Auth.authenticated && !Chiaki.session) {
+        if (!Nax5Auth.authenticated) {
             if (stack.depth > 1)
                 stack.pop(stack.get(0));
             stack.replace(stack.get(0), loginViewComponent);
@@ -249,7 +249,7 @@ Item {
     }
 
     Component.onCompleted: {
-        if (Chiaki.session)
+        if (Chiaki.session && Nax5Auth.authenticated)
             stack.replace(stack.get(0), streamViewComponent, {}, StackView.Immediate);
     }
 
@@ -527,7 +527,7 @@ Item {
         target: Nax5Auth
 
         function onAuthenticatedChanged() {
-            if (Chiaki.session)
+            if (Nax5Auth.authenticated && Chiaki.session)
                 return;
             root.showMainView();
         }
@@ -537,9 +537,11 @@ Item {
         target: Chiaki
 
         function onSessionChanged() {
-            if (Chiaki.session)
+            if (Chiaki.session && Nax5Auth.authenticated)
                 root.showStreamView();
             else if (!Nax5Auth.authenticated)
+                root.showMainView();
+            else
                 root.showMainView();
         }
 

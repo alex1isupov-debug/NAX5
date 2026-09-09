@@ -21,3 +21,8 @@ bool nax5AuthCanStartLogin(Nax5AuthState current)
 {
     return current != Nax5AuthStateAuthenticating;
 }
+
+bool nax5AuthAllowsRemotePlay(Nax5AuthState current)
+{
+    return current == Nax5AuthStateAuthenticated;
+}

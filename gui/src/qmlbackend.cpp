@@ -143,8 +143,10 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     qt_msg_handler = qInstallMessageHandler(msg_handler);
 
     const char *uri = "org.streetpea.chiaking";
+    nax5_auth = new Nax5AuthController(this);
     qmlRegisterSingletonInstance(uri, 1, 0, "Chiaki", this);
-    qmlRegisterSingletonInstance(uri, 1, 0, "Nax5Auth", new Nax5AuthController(this));
+    qmlRegisterSingletonInstance(uri, 1, 0, "Nax5Auth", nax5_auth);
+    connect(nax5_auth, &Nax5AuthController::stateChanged, this, &QmlBackend::onNax5AuthStateChanged);
     qmlRegisterUncreatableType<QmlMainWindow>(uri, 1, 0, "ChiakiWindow", {});
     qmlRegisterUncreatableType<QmlSettings>(uri, 1, 0, "ChiakiSettings", {});
     qmlRegisterUncreatableType<StreamSession>(uri, 1, 0, "ChiakiSession", {});
@@ -201,6 +203,8 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     {
         connect(psn_auto_connect_timer, &QTimer::timeout, this, [this]
         {
+            if (!nax5RemotePlayAllowed())
+                return;
             int i = 0;
             for (const auto &host : std::as_const(psn_hosts))
             {
@@ -214,7 +218,6 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
             }
             qCWarning(chiakiGui) << "Couldn't find PSN host with the requested nickname: " << auto_connect_nickname;
         });
-        psn_auto_connect_timer->start(PSN_INTERNET_WAIT_SECONDS * 1000);
     }
     connect(psn_reconnect_timer, &QTimer::timeout, this, [this]{
         QString refresh = this->settings->GetPsnRefreshToken();
@@ -257,7 +260,6 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     {
         emit wakeupStartFailed();
     });
-    psn_auto_connect_timer->start(PSN_INTERNET_WAIT_SECONDS * 1000);
     sleep_inhibit = new SystemdInhibit(QGuiApplication::applicationName(), tr("Remote Play session"), "sleep", "delay", this);
     connect(sleep_inhibit, &SystemdInhibit::sleep, this, &QmlBackend::goToSleep);
     connect(sleep_inhibit, &SystemdInhibit::resume, this, &QmlBackend::resumeFromSleep);
@@ -458,6 +460,8 @@ void QmlBackend::profileChanged()
     {
         connect(psn_auto_connect_timer, &QTimer::timeout, this, [this]
         {
+            if (!nax5RemotePlayAllowed())
+                return;
             int i = 0;
             for (const auto &host : std::as_const(psn_hosts))
             {
@@ -471,8 +475,8 @@ void QmlBackend::profileChanged()
             }
             qCWarning(chiakiGui) << "Couldn't find PSN host with the requested nickname: " << auto_connect_nickname;
         });
-        psn_auto_connect_timer->start(PSN_INTERNET_WAIT_SECONDS * 1000);
     }
+    startNax5AutoConnectIfAllowed();
     connect(psn_reconnect_timer, &QTimer::timeout, this, [this]{
         QString refresh = this->settings->GetPsnRefreshToken();
         if(refresh.isEmpty())
@@ -694,6 +698,35 @@ bool QmlBackend::autoConnect() const
     return auto_connect_mac.GetValue();
 }
 
+bool QmlBackend::nax5RemotePlayAllowed() const
+{
+    return nax5_auth && nax5_auth->authenticated();
+}
+
+void QmlBackend::startNax5AutoConnectIfAllowed()
+{
+    if (!nax5RemotePlayAllowed())
+        return;
+    if (!autoConnect() || auto_connect_nickname.isEmpty())
+        return;
+    if (!psn_auto_connect_timer)
+        return;
+    psn_auto_connect_timer->start(PSN_INTERNET_WAIT_SECONDS * 1000);
+}
+
+void QmlBackend::onNax5AuthStateChanged()
+{
+    if (nax5RemotePlayAllowed()) {
+        startNax5AutoConnectIfAllowed();
+        updateDiscoveryHosts();
+        return;
+    }
+    if (psn_auto_connect_timer)
+        psn_auto_connect_timer->stop();
+    if (session)
+        stopSession(false);
+}
+
 void QmlBackend::psnCancel(bool stop_thread)
 {
     session->CancelPsnConnection(stop_thread);
@@ -766,6 +799,11 @@ void QmlBackend::psnSessionStart()
 void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
 {
     pending_recovered_frame.storeRelaxed(0);
+
+    if (!nax5RemotePlayAllowed()) {
+        qCWarning(chiakiGui) << "Refusing Remote Play session before NAX5 login";
+        return;
+    }
 
     if (autoConnect()) {
         auto_connect_mac = {};
@@ -1354,6 +1392,10 @@ void QmlBackend::setWebEngineHints(QQuickWebEngineProfile *profile)
 
 void QmlBackend::connectToHost(int index, QString nickname)
 {
+    if (!nax5RemotePlayAllowed()) {
+        qCWarning(chiakiGui) << "Refusing host connection before NAX5 login";
+        return;
+    }
     window->setWindowAdjustable(false);
     auto server = displayServerAt(index);
     if (!server.valid)
@@ -2199,7 +2241,7 @@ void QmlBackend::updateDiscoveryHosts()
             }
         }
     }
-    if (autoConnect()) {
+    if (autoConnect() && nax5RemotePlayAllowed()) {
         const int hosts_count = discovery_manager.GetHosts().count();
         for (int i = 0; i < hosts_count; ++i) {
             if (discovery_manager.GetHosts().at(i).GetHostMAC() != auto_connect_mac)

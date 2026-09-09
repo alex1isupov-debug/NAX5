@@ -21,3 +21,4 @@ enum Nax5AuthAction
 
 Nax5AuthState nax5AuthReduce(Nax5AuthState current, Nax5AuthAction action);
 bool nax5AuthCanStartLogin(Nax5AuthState current);
+bool nax5AuthAllowsRemotePlay(Nax5AuthState current);
