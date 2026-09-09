@@ -124,7 +124,7 @@ static void test_error_messages_are_user_facing()
 static void test_default_api_url_is_https()
 {
     expect(Nax5ApiConfig::defaultBaseUrl() == QStringLiteral("https://cloudgta6.com"), "production default");
-    expect(Nax5ApiConfig::userAgent().startsWith(QStringLiteral("NAX5/0.2")), "user agent");
+    expect(Nax5ApiConfig::userAgent().startsWith(QStringLiteral("NAX5/0.3")), "user agent");
 }
 
 int main()

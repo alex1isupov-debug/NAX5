@@ -53,6 +53,14 @@ set(SOURCE_FILES
 	src/nax5/nax5authstate.cpp
 	include/nax5/nax5authcontroller.h
 	src/nax5/nax5authcontroller.cpp
+	include/nax5/session/nax5sessionerror.h
+	src/nax5/session/nax5sessionerror.cpp
+	include/nax5/session/nax5sessionstate.h
+	src/nax5/session/nax5sessionstate.cpp
+	include/nax5/session/nax5sessionparser.h
+	src/nax5/session/nax5sessionparser.cpp
+	include/nax5/session/nax5sessioncontroller.h
+	src/nax5/session/nax5sessioncontroller.cpp
 	src/qml/qml.qrc
 	include/qmlmainwindow.h
 	src/qmlmainwindow.cpp
@@ -183,4 +191,15 @@ if(CHIAKI_ENABLE_TESTS)
 	target_include_directories(nax5-auth-unit PRIVATE include)
 	target_link_libraries(nax5-auth-unit Qt::Core)
 	add_test(NAME nax5-auth COMMAND nax5-auth-unit)
+
+	add_executable(nax5-session-unit
+		src/nax5/nax5apiconfig.cpp
+		src/nax5/session/nax5sessionerror.cpp
+		src/nax5/session/nax5sessionstate.cpp
+		src/nax5/session/nax5sessionparser.cpp
+		src/nax5/session/nax5sessionparser_test.cpp
+	)
+	target_include_directories(nax5-session-unit PRIVATE include)
+	target_link_libraries(nax5-session-unit Qt::Core)
+	add_test(NAME nax5-session COMMAND nax5-session-unit)
 endif()
