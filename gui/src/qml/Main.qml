@@ -133,6 +133,12 @@ Item {
             releaseInput();
             useSeparateStreamSettingsWindows = false;
         }
+        if (!Nax5Auth.authenticated && !Chiaki.session) {
+            if (stack.depth > 1)
+                stack.pop(stack.get(0));
+            stack.replace(stack.get(0), loginViewComponent);
+            return;
+        }
         if (stack.depth > 1)
             stack.pop(stack.get(0));
         else
@@ -245,8 +251,6 @@ Item {
     Component.onCompleted: {
         if (Chiaki.session)
             stack.replace(stack.get(0), streamViewComponent, {}, StackView.Immediate);
-        else if (Chiaki.autoConnect)
-            stack.replace(stack.get(0), autoConnectViewComponent, {}, StackView.Immediate);
     }
 
     Pane {
@@ -258,7 +262,7 @@ Item {
         id: stack
         anchors.fill: parent
         hoverEnabled: false
-        initialItem: mainViewComponent
+        initialItem: loginViewComponent
         font.pixelSize: 20
 
         replaceEnter: Transition {
@@ -520,11 +524,23 @@ Item {
     }
 
     Connections {
+        target: Nax5Auth
+
+        function onAuthenticatedChanged() {
+            if (Chiaki.session)
+                return;
+            root.showMainView();
+        }
+    }
+
+    Connections {
         target: Chiaki
 
         function onSessionChanged() {
             if (Chiaki.session)
                 root.showStreamView();
+            else if (!Nax5Auth.authenticated)
+                root.showMainView();
         }
 
         function onShowPsnView() {
@@ -563,8 +579,26 @@ Item {
     }
 
     Component {
+        id: loginViewComponent
+        LoginView { }
+    }
+
+    Component {
         id: mainViewComponent
-        MainView { }
+        Item {
+            Nax5AccountBar {
+                id: nax5AccountBar
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+            }
+            MainView {
+                anchors.top: nax5AccountBar.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+            }
+        }
     }
 
     Component {

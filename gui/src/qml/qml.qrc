@@ -3,6 +3,8 @@
     <file>qtquickcontrols2.conf</file>
     <file>Main.qml</file>
     <file>MainView.qml</file>
+    <file>LoginView.qml</file>
+    <file>Nax5AccountBar.qml</file>
     <file>StreamView.qml</file>
     <file>StreamMenuWindow.qml</file>
     <file>ConfirmDialog.qml</file>
