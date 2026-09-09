@@ -21,7 +21,7 @@ BEGIN
     BEGIN
         BLOCK "080904b0"
         BEGIN
-            VALUE "Comments", "NAX5 Alpha 0.1, based on chiaki-ng"
+            VALUE "Comments", "NAX5 Alpha 0.2, based on chiaki-ng"
             VALUE "CompanyName", "Stret Pea"
             VALUE "FileDescription", "NAX5 Remote Play Client"
             VALUE "FileVersion", VER_FILEVERSION_STR
