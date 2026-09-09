@@ -6,7 +6,7 @@ Baseline: chiaki-ng v1.10.0
 
 Baseline SHA: `0c4a45df0cae2af2ba2daef84e881850b07038a3`
 
-NAX5 version: Alpha 0.2
+NAX5 version: Alpha 0.3
 
 `nax5-baseline` is an exact snapshot of the upstream baseline. Do not commit product patches to that branch.
 
@@ -16,6 +16,7 @@ Product patches:
 - P02 Settings isolation
 - P03 Windows metadata/package
 - P04 NAX5 native backend authentication
+- P05 Backend console assignment
 
 Streaming core modifications: NONE
 
@@ -26,4 +27,4 @@ Protected areas (do not change unless a dedicated regression ADR requires it):
 - `gui/src/streamsession.cpp`
 - Remote Play protocol, decoder, renderer, audio, controller, discovery, and PSN registration
 
-NAX5-specific authentication lives under `gui/include/nax5/` and `gui/src/nax5/`. Session tokens stay in RAM for Alpha 0.2; passwords are not stored.
+NAX5-specific authentication lives under `gui/include/nax5/` and `gui/src/nax5/`. Console assignment lives under `gui/include/nax5/session/` and `gui/src/nax5/session/`. Session tokens stay in RAM; passwords are not stored. Play in Alpha 0.3 only calls the reservation API and does not start Remote Play.
