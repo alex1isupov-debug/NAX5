@@ -136,3 +136,6 @@ fi
 if [[ -f "$source_root/ALPHA03-USER-TEST.md" ]]; then
     cp "$source_root/ALPHA03-USER-TEST.md" "$output_dir/ALPHA03-USER-TEST.md"
 fi
+if [[ -f "$source_root/ALPHA04-USER-TEST.md" ]]; then
+    cp "$source_root/ALPHA04-USER-TEST.md" "$output_dir/ALPHA04-USER-TEST.md"
+fi

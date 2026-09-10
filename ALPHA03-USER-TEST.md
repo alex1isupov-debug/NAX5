@@ -1,12 +1,18 @@
 # NAX5 Alpha 0.3 user test
 
-Use a local backend at `http://127.0.0.1:8000`. For local development:
+Use a local backend at `http://127.0.0.1:8000`.
+
+Preferred launch (no zip extract):
 
 ```
-set NAX5_API_BASE_URL=http://127.0.0.1:8000
+C:\astro\NAX5\build-alpha03-acceptance\portable\NAX5\start-nax5-local.cmd
 ```
 
-Do not double-click `chiaki.exe` for local tests. Without that variable NAX5 talks to production. Helper: `build-alpha03-acceptance/portable/NAX5/start-nax5-local.cmd`.
+That script sets `NAX5_API_BASE_URL=http://127.0.0.1:8000`, checks that Django is up, then starts `chiaki.exe` in the same process so the variable is inherited.
+
+If you unpack `NAX5-Alpha-0.3-Windows-x64.zip`, run `start-nax5-local.cmd` from the extracted folder. Do not double-click `chiaki.exe`. Without the variable NAX5 talks to production (`cloudgta6.com`) and shows «Сервис временно недоступен.»
+
+Do not use `start "" chiaki.exe` after `set NAX5_API_BASE_URL=...`: Windows `start` often drops the environment, which is the usual “extracted the zip and connection failed” failure.
 
 Session tokens stay in RAM only. Closing NAX5 requires a new login.
 
@@ -30,15 +36,10 @@ Recorded 2026-09-09 against branch `task3-console-assignment` (`a05e6bc3` plus T
 
 Do not mark PASS without user confirmation.
 
-First scenario:
-
-1. User A → Login → Play
-2. Expected: `Консоль выделена` and `PS5-439`
-3. User B → Login → Play
-4. Expected: `Все консоли сейчас заняты.`
-5. User A → Освободить
-6. User B → Play
-7. Expected: reservation succeeds for `PS5-439`
+1. User A → Login → Play — **PASS** (user 2026-09-09): `Консоль выделена`, `PS5-439 · Moscow`, Remote Play did not start
+2. User B → Login → Play — **PASS** (user 2026-09-10): no capacity / occupied
+3. User A → Освободить, then User B → Play — not confirmed yet
+4. Expected after step 3: reservation succeeds for `PS5-439`
 
 ## NOT IN SCOPE
 
