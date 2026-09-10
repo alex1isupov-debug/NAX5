@@ -160,8 +160,12 @@ static void test_shutdown_and_stale_lifecycle()
     expect(nax5ShutdownMutation(Nax5GameSessionStateConnecting, false) == Nax5TerminalMutationFail, "connecting fail");
     expect(nax5ShutdownMutation(Nax5GameSessionStateActive, false) == Nax5TerminalMutationEnd, "active end");
     expect(nax5ShutdownMutation(Nax5GameSessionStateConnecting, true) == Nax5TerminalMutationEnd, "connected stream end");
+    expect(nax5ShutdownMutation(Nax5GameSessionStateConnecting, true) != Nax5TerminalMutationCancel, "local connected close is not cancel");
+    expect(nax5ShutdownMutation(Nax5GameSessionStateConnecting, true) != Nax5TerminalMutationFail, "end while connected http pending");
     expect(nax5StreamQuitMutation(true, false) == Nax5TerminalMutationEnd, "quit after connected");
     expect(nax5StreamQuitMutation(false, false) == Nax5TerminalMutationFail, "quit before connected");
+    expect(nax5ShutdownMutation(Nax5GameSessionStateConnecting, false) == Nax5TerminalMutationFail, "shutdown connecting without local connection");
+    expect(nax5ShutdownMutation(Nax5GameSessionStateConnecting, false) != Nax5TerminalMutationEnd, "never-connected connecting is not ended");
     expect(nax5StreamQuitMutation(true, true) == Nax5TerminalMutationNone, "operator test no product end");
     expect(nax5AcceptAsync(2, 2, 9, 9), "same generation request");
     expect(!nax5AcceptAsync(3, 2, 9, 9), "stale generation ignored");
