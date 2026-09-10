@@ -15,8 +15,6 @@ Nax5ApiClient::Nax5ApiClient(QObject *parent)
     : QObject(parent)
     , network(new QNetworkAccessManager(this))
     , next_request_id(1)
-    , active_request_id(0)
-    , active_kind(RequestNone)
 {
 }
 
@@ -25,21 +23,72 @@ Nax5ApiClient::~Nax5ApiClient()
     abortAll();
 }
 
-void Nax5ApiClient::abortAll()
+void Nax5ApiClient::abortInFlight(InFlight &item)
 {
-    if (!active_reply)
+    QNetworkReply *reply = item.reply.data();
+    item.reply.clear();
+    item.request_id = 0;
+    if (!reply)
         return;
-    QNetworkReply *reply = active_reply.data();
-    active_reply.clear();
-    active_request_id = 0;
-    active_kind = RequestNone;
     reply->abort();
     reply->deleteLater();
 }
 
-QNetworkReply *Nax5ApiClient::sendJson(const QString &method, const QString &path, const QByteArray &body, const QString &session_token, const QByteArray &idempotency_key)
+void Nax5ApiClient::abortLane(Nax5ApiLane lane)
 {
-    abortAll();
+    for (int i = in_flight.size() - 1; i >= 0; --i)
+    {
+        if (in_flight[i].lane != lane || in_flight[i].request_id == 0)
+            continue;
+        abortInFlight(in_flight[i]);
+        in_flight.removeAt(i);
+    }
+}
+
+void Nax5ApiClient::abortAll()
+{
+    for (int i = 0; i < in_flight.size(); ++i)
+        abortInFlight(in_flight[i]);
+    in_flight.clear();
+}
+
+bool Nax5ApiClient::hasLane(Nax5ApiLane lane) const
+{
+    for (const InFlight &item : in_flight)
+    {
+        if (item.lane == lane && item.request_id != 0 && !item.reply.isNull())
+            return true;
+    }
+    return false;
+}
+
+bool Nax5ApiClient::completeLive(quint64 request_id)
+{
+    for (int i = 0; i < in_flight.size(); ++i)
+    {
+        if (in_flight[i].request_id != request_id)
+            continue;
+        in_flight.removeAt(i);
+        return true;
+    }
+    return false;
+}
+
+QNetworkReply *Nax5ApiClient::sendJson(Nax5ApiLane lane, quint64 request_id, const QString &method, const QString &path, const QByteArray &body, const QString &session_token, const QByteArray &idempotency_key)
+{
+    for (int i = in_flight.size() - 1; i >= 0; --i)
+    {
+        if (in_flight[i].request_id == 0)
+        {
+            in_flight.removeAt(i);
+            continue;
+        }
+        if (nax5ApiShouldAbortExisting(in_flight[i].lane, lane))
+        {
+            abortInFlight(in_flight[i]);
+            in_flight.removeAt(i);
+        }
+    }
 
     QString config_error;
     const QUrl base = Nax5ApiConfig::baseUrl(&config_error);
@@ -65,7 +114,13 @@ QNetworkReply *Nax5ApiClient::sendJson(const QString &method, const QString &pat
     else
         reply = network->get(request);
 
-    qCInfo(nax5Api) << method << path;
+    InFlight item;
+    item.request_id = request_id;
+    item.lane = lane;
+    item.reply = reply;
+    in_flight.append(item);
+
+    qCInfo(nax5Api) << method << path << "lane" << static_cast<int>(lane) << "id" << request_id;
     return reply;
 }
 
@@ -91,7 +146,7 @@ quint64 Nax5ApiClient::login(const QString &email, const QString &password)
     QByteArray body = QJsonDocument(payload).toJson(QJsonDocument::Compact);
     payload.insert(QStringLiteral("password"), QString());
 
-    QNetworkReply *reply = sendJson(QStringLiteral("POST"), QStringLiteral("/_allauth/app/v1/auth/login"), body, QString());
+    QNetworkReply *reply = sendJson(Nax5ApiLaneAuth, request_id, QStringLiteral("POST"), QStringLiteral("/_allauth/app/v1/auth/login"), body, QString());
     body.fill(' ');
     if (!reply)
     {
@@ -100,10 +155,6 @@ quint64 Nax5ApiClient::login(const QString &email, const QString &password)
         emit loginFinished(request_id, result);
         return request_id;
     }
-
-    active_reply = reply;
-    active_request_id = request_id;
-    active_kind = RequestLogin;
     connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
         finishLogin(request_id, reply);
     });
@@ -113,15 +164,12 @@ quint64 Nax5ApiClient::login(const QString &email, const QString &password)
 quint64 Nax5ApiClient::fetchMe(const QString &session_token)
 {
     const quint64 request_id = next_request_id++;
-    QNetworkReply *reply = sendJson(QStringLiteral("GET"), QStringLiteral("/api/v1/auth/me/"), QByteArray(), session_token);
+    QNetworkReply *reply = sendJson(Nax5ApiLaneAuth, request_id, QStringLiteral("GET"), QStringLiteral("/api/v1/auth/me/"), QByteArray(), session_token);
     if (!reply)
     {
         emit meFinished(request_id, Nax5MeParseResult());
         return request_id;
     }
-    active_reply = reply;
-    active_request_id = request_id;
-    active_kind = RequestMe;
     connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
         finishMe(request_id, reply);
     });
@@ -131,15 +179,12 @@ quint64 Nax5ApiClient::fetchMe(const QString &session_token)
 quint64 Nax5ApiClient::logout(const QString &session_token)
 {
     const quint64 request_id = next_request_id++;
-    QNetworkReply *reply = sendJson(QStringLiteral("DELETE"), QStringLiteral("/_allauth/app/v1/auth/session"), QByteArray(), session_token);
+    QNetworkReply *reply = sendJson(Nax5ApiLaneAuth, request_id, QStringLiteral("DELETE"), QStringLiteral("/_allauth/app/v1/auth/session"), QByteArray(), session_token);
     if (!reply)
     {
         emit logoutFinished(request_id);
         return request_id;
     }
-    active_reply = reply;
-    active_request_id = request_id;
-    active_kind = RequestLogout;
     connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
         finishLogout(request_id, reply);
     });
@@ -148,14 +193,11 @@ quint64 Nax5ApiClient::logout(const QString &session_token)
 
 void Nax5ApiClient::finishLogin(quint64 request_id, QNetworkReply *reply)
 {
-    if (active_request_id != request_id)
+    if (!completeLive(request_id))
     {
         reply->deleteLater();
         return;
     }
-    active_reply.clear();
-    active_request_id = 0;
-    active_kind = RequestNone;
 
     Nax5LoginParseResult result;
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -177,14 +219,11 @@ void Nax5ApiClient::finishLogin(quint64 request_id, QNetworkReply *reply)
 
 void Nax5ApiClient::finishMe(quint64 request_id, QNetworkReply *reply)
 {
-    if (active_request_id != request_id)
+    if (!completeLive(request_id))
     {
         reply->deleteLater();
         return;
     }
-    active_reply.clear();
-    active_request_id = 0;
-    active_kind = RequestNone;
 
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     Nax5MeParseResult result;
@@ -198,14 +237,11 @@ void Nax5ApiClient::finishMe(quint64 request_id, QNetworkReply *reply)
 
 void Nax5ApiClient::finishLogout(quint64 request_id, QNetworkReply *reply)
 {
-    if (active_request_id != request_id)
+    if (!completeLive(request_id))
     {
         reply->deleteLater();
         return;
     }
-    active_reply.clear();
-    active_request_id = 0;
-    active_kind = RequestNone;
     emit logoutFinished(request_id);
     reply->deleteLater();
 }
@@ -214,6 +250,8 @@ quint64 Nax5ApiClient::reserveSession(const QString &session_token, const QStrin
 {
     const quint64 request_id = next_request_id++;
     QNetworkReply *reply = sendJson(
+        Nax5ApiLaneReserve,
+        request_id,
         QStringLiteral("POST"),
         QStringLiteral("/api/v1/sessions/reserve/"),
         QByteArray("{}"),
@@ -226,9 +264,6 @@ quint64 Nax5ApiClient::reserveSession(const QString &session_token, const QStrin
         emit reserveFinished(request_id, result);
         return request_id;
     }
-    active_reply = reply;
-    active_request_id = request_id;
-    active_kind = RequestReserve;
     connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
         finishReserve(request_id, reply);
     });
@@ -238,15 +273,12 @@ quint64 Nax5ApiClient::reserveSession(const QString &session_token, const QStrin
 quint64 Nax5ApiClient::fetchCurrentSession(const QString &session_token)
 {
     const quint64 request_id = next_request_id++;
-    QNetworkReply *reply = sendJson(QStringLiteral("GET"), QStringLiteral("/api/v1/sessions/current/"), QByteArray(), session_token);
+    QNetworkReply *reply = sendJson(Nax5ApiLaneQuery, request_id, QStringLiteral("GET"), QStringLiteral("/api/v1/sessions/current/"), QByteArray(), session_token);
     if (!reply)
     {
         emit currentFinished(request_id, Nax5SessionParseResult());
         return request_id;
     }
-    active_reply = reply;
-    active_request_id = request_id;
-    active_kind = RequestCurrent;
     connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
         finishCurrent(request_id, reply);
     });
@@ -257,7 +289,7 @@ quint64 Nax5ApiClient::cancelSession(const QString &session_token, const QString
 {
     const quint64 request_id = next_request_id++;
     const QString path = QStringLiteral("/api/v1/sessions/%1/cancel/").arg(public_session_id);
-    QNetworkReply *reply = sendJson(QStringLiteral("POST"), path, QByteArray("{}"), session_token);
+    QNetworkReply *reply = sendJson(Nax5ApiLaneTerminal, request_id, QStringLiteral("POST"), path, QByteArray("{}"), session_token);
     if (!reply)
     {
         Nax5SessionParseResult result;
@@ -265,9 +297,6 @@ quint64 Nax5ApiClient::cancelSession(const QString &session_token, const QString
         emit cancelFinished(request_id, result);
         return request_id;
     }
-    active_reply = reply;
-    active_request_id = request_id;
-    active_kind = RequestCancel;
     connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
         finishCancel(request_id, reply);
     });
@@ -291,14 +320,11 @@ Nax5SessionParseResult Nax5ApiClient::finishSessionNetwork(QNetworkReply *reply,
 
 void Nax5ApiClient::finishReserve(quint64 request_id, QNetworkReply *reply)
 {
-    if (active_request_id != request_id)
+    if (!completeLive(request_id))
     {
         reply->deleteLater();
         return;
     }
-    active_reply.clear();
-    active_request_id = 0;
-    active_kind = RequestNone;
 
     bool used_body = false;
     Nax5SessionParseResult result = finishSessionNetwork(reply, &used_body);
@@ -314,14 +340,11 @@ void Nax5ApiClient::finishReserve(quint64 request_id, QNetworkReply *reply)
 
 void Nax5ApiClient::finishCurrent(quint64 request_id, QNetworkReply *reply)
 {
-    if (active_request_id != request_id)
+    if (!completeLive(request_id))
     {
         reply->deleteLater();
         return;
     }
-    active_reply.clear();
-    active_request_id = 0;
-    active_kind = RequestNone;
 
     bool used_body = false;
     Nax5SessionParseResult result = finishSessionNetwork(reply, &used_body);
@@ -333,14 +356,11 @@ void Nax5ApiClient::finishCurrent(quint64 request_id, QNetworkReply *reply)
 
 void Nax5ApiClient::finishCancel(quint64 request_id, QNetworkReply *reply)
 {
-    if (active_request_id != request_id)
+    if (!completeLive(request_id))
     {
         reply->deleteLater();
         return;
     }
-    active_reply.clear();
-    active_request_id = 0;
-    active_kind = RequestNone;
 
     bool used_body = false;
     Nax5SessionParseResult result = finishSessionNetwork(reply, &used_body);
@@ -358,7 +378,7 @@ quint64 Nax5ApiClient::fetchConnection(const QString &session_token, const QStri
 {
     const quint64 request_id = next_request_id++;
     const QString path = QStringLiteral("/api/v1/sessions/%1/connection/").arg(public_session_id);
-    QNetworkReply *reply = sendJson(QStringLiteral("POST"), path, QByteArray("{}"), session_token);
+    QNetworkReply *reply = sendJson(Nax5ApiLaneConnection, request_id, QStringLiteral("POST"), path, QByteArray("{}"), session_token);
     if (!reply)
     {
         Nax5ConnectionParseResult result;
@@ -366,9 +386,6 @@ quint64 Nax5ApiClient::fetchConnection(const QString &session_token, const QStri
         emit connectionFinished(request_id, result);
         return request_id;
     }
-    active_reply = reply;
-    active_request_id = request_id;
-    active_kind = RequestConnection;
     connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
         finishConnection(request_id, reply);
     });
@@ -379,7 +396,7 @@ quint64 Nax5ApiClient::markConnected(const QString &session_token, const QString
 {
     const quint64 request_id = next_request_id++;
     const QString path = QStringLiteral("/api/v1/sessions/%1/connected/").arg(public_session_id);
-    QNetworkReply *reply = sendJson(QStringLiteral("POST"), path, QByteArray("{}"), session_token);
+    QNetworkReply *reply = sendJson(Nax5ApiLaneTerminal, request_id, QStringLiteral("POST"), path, QByteArray("{}"), session_token);
     if (!reply)
     {
         Nax5SessionParseResult result;
@@ -387,9 +404,6 @@ quint64 Nax5ApiClient::markConnected(const QString &session_token, const QString
         emit connectedFinished(request_id, result);
         return request_id;
     }
-    active_reply = reply;
-    active_request_id = request_id;
-    active_kind = RequestConnected;
     connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
         finishConnected(request_id, reply);
     });
@@ -400,7 +414,7 @@ quint64 Nax5ApiClient::failSession(const QString &session_token, const QString &
 {
     const quint64 request_id = next_request_id++;
     const QString path = QStringLiteral("/api/v1/sessions/%1/fail/").arg(public_session_id);
-    QNetworkReply *reply = sendJson(QStringLiteral("POST"), path, QByteArray("{}"), session_token);
+    QNetworkReply *reply = sendJson(Nax5ApiLaneTerminal, request_id, QStringLiteral("POST"), path, QByteArray("{}"), session_token);
     if (!reply)
     {
         Nax5SessionParseResult result;
@@ -408,9 +422,6 @@ quint64 Nax5ApiClient::failSession(const QString &session_token, const QString &
         emit failFinished(request_id, result);
         return request_id;
     }
-    active_reply = reply;
-    active_request_id = request_id;
-    active_kind = RequestFail;
     connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
         finishFail(request_id, reply);
     });
@@ -421,7 +432,7 @@ quint64 Nax5ApiClient::endSession(const QString &session_token, const QString &p
 {
     const quint64 request_id = next_request_id++;
     const QString path = QStringLiteral("/api/v1/sessions/%1/end/").arg(public_session_id);
-    QNetworkReply *reply = sendJson(QStringLiteral("POST"), path, QByteArray("{}"), session_token);
+    QNetworkReply *reply = sendJson(Nax5ApiLaneTerminal, request_id, QStringLiteral("POST"), path, QByteArray("{}"), session_token);
     if (!reply)
     {
         Nax5SessionParseResult result;
@@ -429,9 +440,6 @@ quint64 Nax5ApiClient::endSession(const QString &session_token, const QString &p
         emit endFinished(request_id, result);
         return request_id;
     }
-    active_reply = reply;
-    active_request_id = request_id;
-    active_kind = RequestEnd;
     connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
         finishEnd(request_id, reply);
     });
@@ -442,7 +450,7 @@ quint64 Nax5ApiClient::operatorProvision(const QString &session_token, const QSt
 {
     const quint64 request_id = next_request_id++;
     const QString path = QStringLiteral("/api/v1/operator/consoles/%1/provision/").arg(console_code);
-    QNetworkReply *reply = sendJson(QStringLiteral("POST"), path, body, session_token);
+    QNetworkReply *reply = sendJson(Nax5ApiLaneOperator, request_id, QStringLiteral("POST"), path, body, session_token);
     if (!reply)
     {
         Nax5ConnectionParseResult result;
@@ -450,9 +458,6 @@ quint64 Nax5ApiClient::operatorProvision(const QString &session_token, const QSt
         emit operatorFinished(request_id, result);
         return request_id;
     }
-    active_reply = reply;
-    active_request_id = request_id;
-    active_kind = RequestOperator;
     connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
         finishOperator(request_id, reply);
     });
@@ -463,7 +468,7 @@ quint64 Nax5ApiClient::operatorActivate(const QString &session_token, const QStr
 {
     const quint64 request_id = next_request_id++;
     const QString path = QStringLiteral("/api/v1/operator/consoles/%1/activate/").arg(console_code);
-    QNetworkReply *reply = sendJson(QStringLiteral("POST"), path, QByteArray("{}"), session_token);
+    QNetworkReply *reply = sendJson(Nax5ApiLaneOperator, request_id, QStringLiteral("POST"), path, QByteArray("{}"), session_token);
     if (!reply)
     {
         Nax5ConnectionParseResult result;
@@ -471,9 +476,6 @@ quint64 Nax5ApiClient::operatorActivate(const QString &session_token, const QStr
         emit operatorFinished(request_id, result);
         return request_id;
     }
-    active_reply = reply;
-    active_request_id = request_id;
-    active_kind = RequestOperator;
     connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
         finishOperator(request_id, reply);
     });
@@ -484,7 +486,7 @@ quint64 Nax5ApiClient::operatorTestConnection(const QString &session_token, cons
 {
     const quint64 request_id = next_request_id++;
     const QString path = QStringLiteral("/api/v1/operator/consoles/%1/test-connection/").arg(console_code);
-    QNetworkReply *reply = sendJson(QStringLiteral("POST"), path, QByteArray("{}"), session_token);
+    QNetworkReply *reply = sendJson(Nax5ApiLaneConnection, request_id, QStringLiteral("POST"), path, QByteArray("{}"), session_token);
     if (!reply)
     {
         Nax5ConnectionParseResult result;
@@ -492,9 +494,6 @@ quint64 Nax5ApiClient::operatorTestConnection(const QString &session_token, cons
         emit connectionFinished(request_id, result);
         return request_id;
     }
-    active_reply = reply;
-    active_request_id = request_id;
-    active_kind = RequestConnection;
     connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
         finishConnection(request_id, reply);
     });
@@ -505,7 +504,7 @@ quint64 Nax5ApiClient::operatorTestResult(const QString &session_token, const QS
 {
     const quint64 request_id = next_request_id++;
     const QString path = QStringLiteral("/api/v1/operator/consoles/%1/test-result/").arg(console_code);
-    QNetworkReply *reply = sendJson(QStringLiteral("POST"), path, body, session_token);
+    QNetworkReply *reply = sendJson(Nax5ApiLaneOperator, request_id, QStringLiteral("POST"), path, body, session_token);
     if (!reply)
     {
         Nax5ConnectionParseResult result;
@@ -513,9 +512,6 @@ quint64 Nax5ApiClient::operatorTestResult(const QString &session_token, const QS
         emit operatorFinished(request_id, result);
         return request_id;
     }
-    active_reply = reply;
-    active_request_id = request_id;
-    active_kind = RequestOperator;
     connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
         finishOperator(request_id, reply);
     });
@@ -524,14 +520,11 @@ quint64 Nax5ApiClient::operatorTestResult(const QString &session_token, const QS
 
 void Nax5ApiClient::finishConnection(quint64 request_id, QNetworkReply *reply)
 {
-    if (active_request_id != request_id)
+    if (!completeLive(request_id))
     {
         reply->deleteLater();
         return;
     }
-    active_reply.clear();
-    active_request_id = 0;
-    active_kind = RequestNone;
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QByteArray body = reply->readAll();
     Nax5ConnectionParseResult result;
@@ -546,14 +539,11 @@ void Nax5ApiClient::finishConnection(quint64 request_id, QNetworkReply *reply)
 
 void Nax5ApiClient::finishConnected(quint64 request_id, QNetworkReply *reply)
 {
-    if (active_request_id != request_id)
+    if (!completeLive(request_id))
     {
         reply->deleteLater();
         return;
     }
-    active_reply.clear();
-    active_request_id = 0;
-    active_kind = RequestNone;
     bool used_body = false;
     Nax5SessionParseResult result = finishSessionNetwork(reply, &used_body);
     if (used_body)
@@ -564,14 +554,11 @@ void Nax5ApiClient::finishConnected(quint64 request_id, QNetworkReply *reply)
 
 void Nax5ApiClient::finishFail(quint64 request_id, QNetworkReply *reply)
 {
-    if (active_request_id != request_id)
+    if (!completeLive(request_id))
     {
         reply->deleteLater();
         return;
     }
-    active_reply.clear();
-    active_request_id = 0;
-    active_kind = RequestNone;
     bool used_body = false;
     Nax5SessionParseResult result = finishSessionNetwork(reply, &used_body);
     if (used_body)
@@ -582,14 +569,11 @@ void Nax5ApiClient::finishFail(quint64 request_id, QNetworkReply *reply)
 
 void Nax5ApiClient::finishEnd(quint64 request_id, QNetworkReply *reply)
 {
-    if (active_request_id != request_id)
+    if (!completeLive(request_id))
     {
         reply->deleteLater();
         return;
     }
-    active_reply.clear();
-    active_request_id = 0;
-    active_kind = RequestNone;
     bool used_body = false;
     Nax5SessionParseResult result = finishSessionNetwork(reply, &used_body);
     if (used_body)
@@ -600,14 +584,11 @@ void Nax5ApiClient::finishEnd(quint64 request_id, QNetworkReply *reply)
 
 void Nax5ApiClient::finishOperator(quint64 request_id, QNetworkReply *reply)
 {
-    if (active_request_id != request_id)
+    if (!completeLive(request_id))
     {
         reply->deleteLater();
         return;
     }
-    active_reply.clear();
-    active_request_id = 0;
-    active_kind = RequestNone;
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const QByteArray body = reply->readAll();
     Nax5ConnectionParseResult result = nax5ParseOperatorProvisionResponse(status, body);

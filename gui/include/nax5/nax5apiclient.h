@@ -1,10 +1,12 @@
 #pragma once
 
+#include "nax5/nax5apilane.h"
 #include "nax5/nax5autherror.h"
 #include "nax5/nax5authparser.h"
 #include "nax5/connection/nax5connectionparser.h"
 #include "nax5/session/nax5sessionparser.h"
 
+#include <QList>
 #include <QObject>
 #include <QPointer>
 
@@ -33,7 +35,9 @@ public:
     quint64 operatorActivate(const QString &session_token, const QString &console_code);
     quint64 operatorTestConnection(const QString &session_token, const QString &console_code);
     quint64 operatorTestResult(const QString &session_token, const QString &console_code, const QByteArray &body);
+    void abortLane(Nax5ApiLane lane);
     void abortAll();
+    bool hasLane(Nax5ApiLane lane) const;
 
 signals:
     void loginFinished(quint64 request_id, const Nax5LoginParseResult &result);
@@ -49,23 +53,14 @@ signals:
     void operatorFinished(quint64 request_id, const Nax5ConnectionParseResult &result);
 
 private:
-    enum RequestKind
+    struct InFlight
     {
-        RequestNone,
-        RequestLogin,
-        RequestMe,
-        RequestLogout,
-        RequestReserve,
-        RequestCurrent,
-        RequestCancel,
-        RequestConnection,
-        RequestConnected,
-        RequestFail,
-        RequestEnd,
-        RequestOperator
+        quint64 request_id;
+        Nax5ApiLane lane;
+        QPointer<QNetworkReply> reply;
     };
 
-    QNetworkReply *sendJson(const QString &method, const QString &path, const QByteArray &body, const QString &session_token, const QByteArray &idempotency_key = QByteArray());
+    QNetworkReply *sendJson(Nax5ApiLane lane, quint64 request_id, const QString &method, const QString &path, const QByteArray &body, const QString &session_token, const QByteArray &idempotency_key = QByteArray());
     void finishLogin(quint64 request_id, QNetworkReply *reply);
     void finishMe(quint64 request_id, QNetworkReply *reply);
     void finishLogout(quint64 request_id, QNetworkReply *reply);
@@ -78,11 +73,11 @@ private:
     void finishEnd(quint64 request_id, QNetworkReply *reply);
     void finishOperator(quint64 request_id, QNetworkReply *reply);
     Nax5SessionParseResult finishSessionNetwork(QNetworkReply *reply, bool *used_body);
+    bool completeLive(quint64 request_id);
+    void abortInFlight(InFlight &item);
     static bool isNoNetwork(QNetworkReply *reply);
 
     QNetworkAccessManager *network;
-    QPointer<QNetworkReply> active_reply;
+    QList<InFlight> in_flight;
     quint64 next_request_id;
-    quint64 active_request_id;
-    RequestKind active_kind;
 };
