@@ -6,6 +6,7 @@
     <file>LoginView.qml</file>
     <file>Nax5AccountBar.qml</file>
     <file>Nax5PlayPanel.qml</file>
+    <file>Nax5OperatorPanel.qml</file>
     <file>StreamView.qml</file>
     <file>StreamMenuWindow.qml</file>
     <file>ConfirmDialog.qml</file>

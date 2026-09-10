@@ -8,7 +8,10 @@ import org.streetpea.chiaking
 Pane {
     padding: 0
     id: consolePane
+    visible: Chiaki.operatorMode
     StackView.onActivated: {
+        if (!Chiaki.operatorMode)
+            return;
         forceActiveFocus(Qt.TabFocusReason);
         if(!Chiaki.autoConnect && !root.initialAsk && !Chiaki.window.directStream)
         {

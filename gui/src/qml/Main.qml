@@ -600,8 +600,14 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
             }
-            MainView {
+            Nax5OperatorPanel {
+                id: nax5OperatorPanel
                 anchors.top: nax5PlayPanel.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+            }
+            MainView {
+                anchors.top: nax5OperatorPanel.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom

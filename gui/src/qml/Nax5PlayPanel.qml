@@ -49,7 +49,7 @@ Rectangle {
             spacing: 12
 
             Button {
-                text: Nax5Session.reserving ? qsTr("Ищем...") : qsTr("Играть")
+                text: Nax5Session.reserving ? qsTr("Ищем...") : (Nax5Session.state === 3 || Nax5Session.state === 4 ? qsTr("Игра идёт") : qsTr("Играть"))
                 enabled: Nax5Session.playEnabled
                 Material.background: Material.accent
                 Material.roundedScale: Material.SmallScale

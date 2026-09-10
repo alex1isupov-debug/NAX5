@@ -35,6 +35,13 @@ ToolBar {
         Item { Layout.fillWidth: true }
 
         Button {
+            text: qsTr("Настройки")
+            flat: true
+            Material.roundedScale: Material.SmallScale
+            onClicked: root.showSettingsDialog()
+        }
+
+        Button {
             text: qsTr("Выйти")
             flat: true
             Material.roundedScale: Material.SmallScale

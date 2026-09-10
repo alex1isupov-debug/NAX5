@@ -131,16 +131,32 @@ DialogView {
             return portGuessSocketSlider;
         return remoteFlick;
     }
+    function tabButtonAt(index) {
+        if (index < 0 || index >= bar.contentChildren.length)
+            return null
+        return bar.contentChildren[index]
+    }
+    function moveToVisibleTab(delta) {
+        let i = bar.currentIndex
+        for (let n = 0; n < bar.count; n++) {
+            i = (i + delta + bar.count) % bar.count
+            const btn = tabButtonAt(i)
+            if (btn && btn.visible) {
+                bar.currentIndex = i
+                return
+            }
+        }
+    }
     Keys.onPressed: (event) => {
         if (event.modifiers)
             return;
         switch (event.key) {
         case Qt.Key_PageUp:
-            bar.decrementCurrentIndex();
+            moveToVisibleTab(-1);
             event.accepted = true;
             break;
         case Qt.Key_PageDown:
-            bar.incrementCurrentIndex();
+            moveToVisibleTab(1);
             event.accepted = true;
             break;
         case Qt.Key_Up:
@@ -285,6 +301,7 @@ DialogView {
             TabButton {
                 text: qsTr("Consoles")
                 id: consoles
+                visible: Chiaki.operatorMode
                 focusPolicy: Qt.NoFocus
                 Image {
                     anchors {
@@ -375,6 +392,7 @@ DialogView {
             TabButton {
                 text: qsTr("Remote")
                 id: remote
+                visible: Chiaki.operatorMode
                 focusPolicy: Qt.NoFocus
                 Image {
                     anchors {
@@ -473,9 +491,16 @@ DialogView {
                             id: disconnectAction
                             Layout.preferredWidth: 400
                             firstInFocusChain: true
+                            visible: Chiaki.operatorMode
                             model: [qsTr("Do Nothing"), qsTr("Enter Sleep Mode"), qsTr("Ask")]
                             currentIndex: Chiaki.settings.disconnectAction
                             onActivated: index => Chiaki.settings.disconnectAction = index
+                        }
+
+                        Label {
+                            visible: !Chiaki.operatorMode
+                            Layout.preferredWidth: 400
+                            text: qsTr("NAX5 does not sleep the shared console")
                         }
 
                         Label {
@@ -3000,6 +3025,7 @@ DialogView {
 
                     C.Button {
                         id: exportButton
+                        visible: Chiaki.operatorMode
                         text: qsTr("Export settings to file")
                         onClicked: {
                             Chiaki.settings.exportSettings();
@@ -3009,6 +3035,7 @@ DialogView {
 
                     C.Button {
                         id: importButton
+                        visible: Chiaki.operatorMode
                         text: qsTr("Import settings from file")
                         onClicked: {
                             Chiaki.settings.importSettings();
