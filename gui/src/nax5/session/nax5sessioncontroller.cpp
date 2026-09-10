@@ -11,6 +11,7 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QEventLoop>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTimer>
@@ -29,18 +30,31 @@ Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBacken
     , current_request_id(0)
     , cancel_request_id(0)
     , connection_request_id(0)
+    , connected_request_id(0)
     , test_result_request_id(0)
+    , operator_request_id(0)
     , ignore_cancel_result(false)
     , stream_was_connected(false)
     , operator_test_active(false)
+    , shutdown_started(false)
 {
+    pending_terminal.mutation = Nax5TerminalMutationNone;
+    pending_terminal.generation = 0;
+    pending_terminal.request_id = 0;
+    pending_terminal.attempts = 0;
+    pending_terminal.silent = true;
     lease_timer->setSingleShot(true);
     connect(lease_timer, &QTimer::timeout, this, &Nax5SessionController::syncCurrent);
     connect(api, &Nax5ApiClient::reserveFinished, this, &Nax5SessionController::onReserveFinished);
     connect(api, &Nax5ApiClient::currentFinished, this, &Nax5SessionController::onCurrentFinished);
     connect(api, &Nax5ApiClient::cancelFinished, this, &Nax5SessionController::onCancelFinished);
     connect(api, &Nax5ApiClient::connectionFinished, this, &Nax5SessionController::onConnectionFinished);
+    connect(api, &Nax5ApiClient::connectedFinished, this, &Nax5SessionController::onConnectedFinished);
+    connect(api, &Nax5ApiClient::failFinished, this, &Nax5SessionController::onFailFinished);
+    connect(api, &Nax5ApiClient::endFinished, this, &Nax5SessionController::onEndFinished);
     connect(api, &Nax5ApiClient::operatorFinished, this, [this](quint64 request_id, const Nax5ConnectionParseResult &result) {
+        if (request_id == operator_request_id)
+            operator_request_id = 0;
         const bool silent = request_id == test_result_request_id;
         if (silent)
             test_result_request_id = 0;
@@ -59,23 +73,31 @@ Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBacken
             setStatusText(QStringLiteral("Оператор: готово"));
         }
     });
-    if (auth)
-        connect(auth, &Nax5AuthController::stateChanged, this, &Nax5SessionController::onAuthStateChanged);
-    if (backend)
-        connect(backend, &QmlBackend::sessionChanged, this, &Nax5SessionController::onChiakiSessionChanged);
-    connect(qApp, &QCoreApplication::aboutToQuit, this, &Nax5SessionController::cancelBestEffort);
+    if (this->auth)
+        connect(this->auth, &Nax5AuthController::stateChanged, this, &Nax5SessionController::onAuthStateChanged);
+    if (this->backend)
+        connect(this->backend, &QmlBackend::sessionChanged, this, &Nax5SessionController::onChiakiSessionChanged);
+    connect(qApp, &QCoreApplication::aboutToQuit, this, &Nax5SessionController::prepareShutdown);
 }
 
 Nax5SessionController::~Nax5SessionController()
 {
+    disconnect(qApp, &QCoreApplication::aboutToQuit, this, &Nax5SessionController::prepareShutdown);
     ignore_cancel_result = true;
+    pending_terminal.mutation = Nax5TerminalMutationNone;
     discardMaterial();
-    cancelBestEffort();
 }
 
 bool Nax5SessionController::playEnabled() const
 {
     return auth && auth->authenticated() && nax5SessionCanStartPlay(session_state);
+}
+
+QString Nax5SessionController::liveToken() const
+{
+    if (!auth)
+        return QString();
+    return auth->sessionToken();
 }
 
 quint64 Nax5SessionController::bumpGeneration()
@@ -148,7 +170,12 @@ void Nax5SessionController::resetLocal()
     current_request_id = 0;
     cancel_request_id = 0;
     connection_request_id = 0;
+    connected_request_id = 0;
     test_result_request_id = 0;
+    operator_request_id = 0;
+    pending_terminal.mutation = Nax5TerminalMutationNone;
+    pending_terminal.request_id = 0;
+    pending_terminal.attempts = 0;
     idempotency_key.clear();
     operator_console_code.clear();
     ignore_cancel_result = false;
@@ -200,13 +227,15 @@ void Nax5SessionController::play()
 {
     if (!playEnabled())
         return;
+    if (api->hasLane(Nax5ApiLaneReserve))
+        return;
 
     bumpGeneration();
     idempotency_key = QUuid::createUuid().toString(QUuid::WithoutBraces);
     setError(Nax5SessionErrorNone);
     setStatusText(QStringLiteral("Ищем свободную консоль..."));
     setState(nax5SessionReduce(session_state, Nax5GameSessionActionPlayClicked));
-    reserve_request_id = api->reserveSession(auth->sessionToken(), idempotency_key);
+    reserve_request_id = api->reserveSession(liveToken(), idempotency_key);
 }
 
 void Nax5SessionController::release()
@@ -215,7 +244,7 @@ void Nax5SessionController::release()
         return;
     if (session_state == Nax5GameSessionStateReserving)
     {
-        api->abortAll();
+        api->abortLane(Nax5ApiLaneReserve);
         resetLocal();
         return;
     }
@@ -230,40 +259,119 @@ void Nax5SessionController::release()
     setState(nax5SessionReduce(session_state, Nax5GameSessionActionReleaseClicked));
     ignore_cancel_result = false;
     if (session_state == Nax5GameSessionStateEnding)
-        cancel_request_id = api->endSession(auth->sessionToken(), session_id);
+        dispatchTerminal(Nax5TerminalMutationEnd, false);
     else
-        cancel_request_id = api->cancelSession(auth->sessionToken(), session_id);
+        dispatchTerminal(Nax5TerminalMutationCancel, false);
     if (backend && backend->qmlSession())
         backend->stopSession(false);
 }
 
-void Nax5SessionController::cancelBestEffort()
+void Nax5SessionController::dispatchTerminal(Nax5TerminalMutation mutation, bool silent)
 {
+    if (mutation == Nax5TerminalMutationNone)
+        return;
+    pending_terminal.mutation = mutation;
+    pending_terminal.token = liveToken();
+    pending_terminal.session_id = session_id;
+    pending_terminal.generation = generation;
+    pending_terminal.attempts = 0;
+    pending_terminal.silent = silent;
+    pending_terminal.request_id = 0;
+    if (pending_terminal.token.isEmpty() || pending_terminal.session_id.isEmpty())
+        return;
+    sendPendingTerminal();
+}
+
+void Nax5SessionController::sendPendingTerminal()
+{
+    if (pending_terminal.mutation == Nax5TerminalMutationNone)
+        return;
+    if (pending_terminal.token.isEmpty() || pending_terminal.session_id.isEmpty())
+        return;
+    pending_terminal.attempts++;
+    switch (pending_terminal.mutation) {
+    case Nax5TerminalMutationEnd:
+        pending_terminal.request_id = api->endSession(pending_terminal.token, pending_terminal.session_id);
+        cancel_request_id = pending_terminal.request_id;
+        break;
+    case Nax5TerminalMutationFail:
+        pending_terminal.request_id = api->failSession(pending_terminal.token, pending_terminal.session_id);
+        cancel_request_id = pending_terminal.request_id;
+        break;
+    case Nax5TerminalMutationCancel:
+        pending_terminal.request_id = api->cancelSession(pending_terminal.token, pending_terminal.session_id);
+        cancel_request_id = pending_terminal.request_id;
+        break;
+    case Nax5TerminalMutationNone:
+        break;
+    }
+}
+
+bool Nax5SessionController::retryTerminalIfNeeded(const Nax5SessionParseResult &result)
+{
+    if (shutdown_started)
+        return false;
+    if (pending_terminal.mutation == Nax5TerminalMutationNone)
+        return false;
+    if (pending_terminal.generation != generation)
+        return false;
+    if (result.error != Nax5SessionErrorNetworkError)
+        return false;
+    if (pending_terminal.attempts >= nax5TerminalRetryLimit())
+        return false;
+    QTimer::singleShot(200, this, &Nax5SessionController::sendPendingTerminal);
+    return true;
+}
+
+void Nax5SessionController::handleTerminalFinished(quint64 request_id, const Nax5SessionParseResult &result, Nax5TerminalMutation mutation)
+{
+    if (!nax5AcceptAsync(pending_terminal.generation, generation, pending_terminal.request_id, request_id)
+        && request_id != cancel_request_id)
+        return;
+    if (pending_terminal.mutation != mutation && pending_terminal.mutation != Nax5TerminalMutationNone)
+        return;
+    if (retryTerminalIfNeeded(result))
+        return;
+    pending_terminal.request_id = 0;
+    if (ignore_cancel_result || pending_terminal.silent || shutdown_started)
+        return;
+    onCancelFinished(request_id, result);
+}
+
+void Nax5SessionController::prepareShutdown()
+{
+    if (shutdown_started)
+        return;
+    shutdown_started = true;
+    ignore_cancel_result = true;
+    const Nax5TerminalMutation mutation = nax5ShutdownMutation(session_state, stream_was_connected);
+    if (mutation == Nax5TerminalMutationNone || session_id.isEmpty() || liveToken().isEmpty())
+    {
+        if (session_state == Nax5GameSessionStateReserving)
+            api->abortLane(Nax5ApiLaneReserve);
+        bumpGeneration();
+        return;
+    }
+    dispatchTerminal(mutation, true);
     bumpGeneration();
     reserve_request_id = 0;
     current_request_id = 0;
     connection_request_id = 0;
-    if (!auth || session_id.isEmpty())
-    {
-        if (session_state == Nax5GameSessionStateReserving || session_state == Nax5GameSessionStateFetchingConnection)
-            api->abortAll();
-        return;
-    }
-    const QString token = auth->sessionToken();
-    if (token.isEmpty())
-        return;
-    ignore_cancel_result = true;
-    if (session_state == Nax5GameSessionStateActive)
-        api->endSession(token, session_id);
-    else if (session_state == Nax5GameSessionStateConnecting)
-        api->failSession(token, session_id);
-    else
-        api->cancelSession(token, session_id);
+    connected_request_id = 0;
+    QEventLoop loop;
+    QTimer timer;
+    timer.setSingleShot(true);
+    QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    QObject::connect(api, &Nax5ApiClient::endFinished, &loop, &QEventLoop::quit);
+    QObject::connect(api, &Nax5ApiClient::failFinished, &loop, &QEventLoop::quit);
+    QObject::connect(api, &Nax5ApiClient::cancelFinished, &loop, &QEventLoop::quit);
+    timer.start(nax5ShutdownGraceMs());
+    loop.exec();
 }
 
 void Nax5SessionController::releaseAndLogout()
 {
-    cancelBestEffort();
+    prepareShutdown();
     resetLocal();
     if (auth)
         auth->logout();
@@ -300,7 +408,7 @@ void Nax5SessionController::startStream()
 
 void Nax5SessionController::onReserveFinished(quint64 request_id, const Nax5SessionParseResult &result)
 {
-    if (request_id != reserve_request_id)
+    if (!nax5AcceptAsync(generation, generation, reserve_request_id, request_id))
         return;
     reserve_request_id = 0;
 
@@ -338,7 +446,7 @@ void Nax5SessionController::onReserveFinished(quint64 request_id, const Nax5Sess
 
 void Nax5SessionController::onCurrentFinished(quint64 request_id, const Nax5SessionParseResult &result)
 {
-    if (request_id != current_request_id)
+    if (!nax5AcceptAsync(generation, generation, current_request_id, request_id))
         return;
     current_request_id = 0;
     if (!auth || !auth->authenticated())
@@ -368,11 +476,15 @@ void Nax5SessionController::onCurrentFinished(quint64 request_id, const Nax5Sess
 
 void Nax5SessionController::onCancelFinished(quint64 request_id, const Nax5SessionParseResult &result)
 {
-    if (ignore_cancel_result)
+    if (ignore_cancel_result || shutdown_started)
         return;
-    if (request_id != cancel_request_id)
+    if (!nax5AcceptAsync(generation, generation, cancel_request_id, request_id)
+        && request_id != pending_terminal.request_id)
+        return;
+    if (retryTerminalIfNeeded(result))
         return;
     cancel_request_id = 0;
+    pending_terminal.mutation = Nax5TerminalMutationNone;
     discardMaterial();
     if (result.error == Nax5SessionErrorNone || result.error == Nax5SessionErrorNotFound)
     {
@@ -389,7 +501,7 @@ void Nax5SessionController::onCancelFinished(quint64 request_id, const Nax5Sessi
 
 void Nax5SessionController::onConnectionFinished(quint64 request_id, const Nax5ConnectionParseResult &result)
 {
-    if (request_id != connection_request_id)
+    if (!nax5AcceptAsync(generation, generation, connection_request_id, request_id))
         return;
     connection_request_id = 0;
     if (session_state != Nax5GameSessionStateFetchingConnection && session_state != Nax5GameSessionStateConnecting)
@@ -415,7 +527,7 @@ void Nax5SessionController::onConnectionFinished(quint64 request_id, const Nax5C
         return;
     }
     const bool operator_test = result.material.session_id == QLatin1String("operator-test");
-    if (!operator_test && !result.material.session_id.isEmpty() && result.material.session_id != session_id)
+    if (!operator_test && !nax5AcceptSessionIdentity(session_id, result.material.session_id) && !result.material.session_id.isEmpty())
     {
         discardMaterial();
         setError(Nax5SessionErrorInvalidConnectionMaterial);
@@ -459,7 +571,16 @@ void Nax5SessionController::onStreamConnected()
         return;
     }
     if (auth && !session_id.isEmpty())
-        api->markConnected(auth->sessionToken(), session_id);
+        connected_request_id = api->markConnected(auth->sessionToken(), session_id);
+}
+
+void Nax5SessionController::onConnectedFinished(quint64 request_id, const Nax5SessionParseResult &result)
+{
+    if (!nax5AcceptAsync(generation, generation, connected_request_id, request_id))
+        return;
+    connected_request_id = 0;
+    if (result.error == Nax5SessionErrorNetworkError && !shutdown_started && session_state == Nax5GameSessionStateActive && auth && !session_id.isEmpty())
+        connected_request_id = api->markConnected(auth->sessionToken(), session_id);
 }
 
 static Nax5SessionError errorFromQuitReason(ChiakiQuitReason reason)
@@ -513,23 +634,31 @@ void Nax5SessionController::onStreamQuit(ChiakiQuitReason reason, const QString 
 
 void Nax5SessionController::reportFail()
 {
-    if (!auth || session_id.isEmpty())
-        return;
     ignore_cancel_result = true;
-    api->failSession(auth->sessionToken(), session_id);
+    dispatchTerminal(Nax5TerminalMutationFail, true);
 }
 
 void Nax5SessionController::reportEnd()
 {
-    if (!auth || session_id.isEmpty())
-        return;
     ignore_cancel_result = true;
-    api->endSession(auth->sessionToken(), session_id);
+    dispatchTerminal(Nax5TerminalMutationEnd, true);
+}
+
+void Nax5SessionController::onFailFinished(quint64 request_id, const Nax5SessionParseResult &result)
+{
+    handleTerminalFinished(request_id, result, Nax5TerminalMutationFail);
+}
+
+void Nax5SessionController::onEndFinished(quint64 request_id, const Nax5SessionParseResult &result)
+{
+    handleTerminalFinished(request_id, result, Nax5TerminalMutationEnd);
 }
 
 void Nax5SessionController::reportOperatorTestResult(bool passed)
 {
     if (!auth || !Nax5Runtime::operatorMode() || operator_console_code.isEmpty())
+        return;
+    if (api->hasLane(Nax5ApiLaneOperator) && test_result_request_id != 0)
         return;
     QJsonObject body;
     body.insert(QStringLiteral("passed"), passed);
@@ -543,6 +672,8 @@ void Nax5SessionController::provisionFromFields(const QString &console_code, int
 {
     if (!auth || !Nax5Runtime::operatorMode() || console_code.trimmed().isEmpty())
         return;
+    if (api->hasLane(Nax5ApiLaneOperator))
+        return;
     Nax5Runtime::setLastOperatorConsoleCode(console_code);
     setError(Nax5SessionErrorNone);
     QJsonObject body;
@@ -552,21 +683,25 @@ void Nax5SessionController::provisionFromFields(const QString &console_code, int
     body.insert(QStringLiteral("registKey"), QString::fromLatin1(regist_key.toBase64()));
     body.insert(QStringLiteral("morning"), QString::fromLatin1(morning.toBase64()));
     body.insert(QStringLiteral("consolePin"), console_pin);
-    api->operatorProvision(auth->sessionToken(), console_code, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    operator_request_id = api->operatorProvision(auth->sessionToken(), console_code, QJsonDocument(body).toJson(QJsonDocument::Compact));
 }
 
 void Nax5SessionController::operatorActivate(const QString &console_code)
 {
     if (!auth || !Nax5Runtime::operatorMode() || console_code.trimmed().isEmpty())
         return;
+    if (api->hasLane(Nax5ApiLaneOperator))
+        return;
     Nax5Runtime::setLastOperatorConsoleCode(console_code);
     setError(Nax5SessionErrorNone);
-    api->operatorActivate(auth->sessionToken(), console_code);
+    operator_request_id = api->operatorActivate(auth->sessionToken(), console_code);
 }
 
 void Nax5SessionController::operatorTest(const QString &console_code)
 {
     if (!auth || !Nax5Runtime::operatorMode() || !nax5SessionCanStartPlay(session_state) || console_code.trimmed().isEmpty())
+        return;
+    if (api->hasLane(Nax5ApiLaneConnection))
         return;
     bumpGeneration();
     operator_console_code = console_code.trimmed();

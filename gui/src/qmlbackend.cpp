@@ -7,6 +7,7 @@
 #include "psntoken.h"
 #include "systemdinhibit.h"
 #include "nax5/nax5authcontroller.h"
+#include "nax5/nax5operatorhost.h"
 #include "nax5/nax5runtime.h"
 #include "nax5/session/nax5sessioncontroller.h"
 #include "chiaki/remote/holepunch.h"
@@ -146,7 +147,7 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
 
     const char *uri = "org.streetpea.chiaking";
     nax5_auth = new Nax5AuthController(this);
-    nax5_session = new Nax5SessionController(nax5_auth, this, this);
+    nax5_session = new Nax5SessionController(nax5_auth, this, nax5_auth);
     qmlRegisterSingletonInstance(uri, 1, 0, "Chiaki", this);
     qmlRegisterSingletonInstance(uri, 1, 0, "Nax5Auth", nax5_auth);
     qmlRegisterSingletonInstance(uri, 1, 0, "Nax5Session", nax5_session);
@@ -336,6 +337,8 @@ bool QmlBackend::prepareFrameForPresentation(ChiakiFfmpegFrame &frame, bool use_
 
 QmlBackend::~QmlBackend()
 {
+    if (nax5_session)
+        nax5_session->prepareShutdown();
     if(session)
     {
         chiaki_log_mutex.lock();
@@ -1576,21 +1579,19 @@ void QmlBackend::nax5ProvisionHost(int index, const QString &consoleCode)
         return;
     setNax5LastOperatorConsoleCode(consoleCode);
     auto server = displayServerAt(index);
-    RegisteredHost host;
-    if (server.registered)
-        host = server.registered_host;
-    else
+    const Nax5OperatorHostError selection = nax5ValidateProvisionSelection(
+        index,
+        server.valid,
+        server.registered,
+        consoleCode);
+    if (selection != Nax5OperatorHostOk)
     {
-        const QList<RegisteredHost> registered = settings->GetRegisteredHosts();
-        if (registered.isEmpty())
-        {
-            emit error(tr("Provision"), tr("Register the console in Operator Mode first."));
-            return;
-        }
-        host = registered.first();
+        emit error(tr("Provision"), nax5OperatorHostErrorText(selection));
+        return;
     }
+    const RegisteredHost host = server.registered_host;
     nax5_session->provisionFromFields(
-        consoleCode,
+        consoleCode.trimmed(),
         static_cast<int>(host.GetTarget()),
         host.GetRPRegistKey(),
         host.GetRPKey(),
