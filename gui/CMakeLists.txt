@@ -49,6 +49,10 @@ set(SOURCE_FILES
 	src/nax5/nax5autherror.cpp
 	include/nax5/nax5authparser.h
 	src/nax5/nax5authparser.cpp
+	include/nax5/nax5apilane.h
+	src/nax5/nax5apilane.cpp
+	include/nax5/nax5operatorhost.h
+	src/nax5/nax5operatorhost.cpp
 	include/nax5/nax5apiclient.h
 	src/nax5/nax5apiclient.cpp
 	include/nax5/nax5authstate.h
@@ -59,6 +63,8 @@ set(SOURCE_FILES
 	src/nax5/session/nax5sessionerror.cpp
 	include/nax5/session/nax5sessionstate.h
 	src/nax5/session/nax5sessionstate.cpp
+	include/nax5/session/nax5sessionlifecycle.h
+	src/nax5/session/nax5sessionlifecycle.cpp
 	include/nax5/session/nax5sessionparser.h
 	src/nax5/session/nax5sessionparser.cpp
 	include/nax5/session/nax5sessioncontroller.h
@@ -202,8 +208,11 @@ if(CHIAKI_ENABLE_TESTS)
 
 	add_executable(nax5-session-unit
 		src/nax5/nax5apiconfig.cpp
+		src/nax5/nax5apilane.cpp
+		src/nax5/nax5operatorhost.cpp
 		src/nax5/session/nax5sessionerror.cpp
 		src/nax5/session/nax5sessionstate.cpp
+		src/nax5/session/nax5sessionlifecycle.cpp
 		src/nax5/session/nax5sessionparser.cpp
 		src/nax5/session/nax5sessionparser_test.cpp
 	)
