@@ -14,6 +14,8 @@ if ($settings -notmatch 'id: exportButton\s+visible: Chiaki.operatorMode') { thr
 if ($settings -notmatch 'id: importButton\s+visible: Chiaki.operatorMode') { throw "Import must be operator-only" }
 if ($mainView -notmatch 'visible: Chiaki.operatorMode') { throw "MainView consoles UI must be operator-only" }
 if ($operator -notmatch 'visible: Chiaki.operatorMode') { throw "Operator panel must be operator-only" }
+if ($operator -match 'nax5ProvisionHost\(0,') { throw "Operator provision must not hardcode host index 0" }
+if ($operator -notmatch 'nax5ProvisionHost\(hostIndex,') { throw "Operator provision must use selected hostIndex" }
 if ($play -notmatch 'Nax5Session.play\(\)') { throw "Play UI must stay visible in product" }
 if ($qrc -notmatch 'Nax5OperatorPanel.qml') { throw "Operator QML must be in qml.qrc" }
 if ($qrc -notmatch 'Nax5PlayPanel.qml') { throw "Play QML must be in qml.qrc" }

@@ -6,6 +6,7 @@ import QtQuick.Controls.Material
 import org.streetpea.chiaking
 
 Rectangle {
+    property int hostIndex: -1
     visible: Chiaki.operatorMode
     height: visible ? column.implicitHeight + 20 : 0
     color: "#221a1a"
@@ -28,8 +29,17 @@ Rectangle {
         Label {
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
-            text: qsTr("1) Register via original Chiaki flow. 2) Enter backend console code. 3) Provision. 4) Test. 5) Activate READY only after a successful test.")
+            text: qsTr("1) Register via original Chiaki flow. 2) Select that PS5 in the list. 3) Enter backend console code. 4) Provision selected host. 5) Test. 6) Activate READY only after a successful test.")
             color: "#bdbdbd"
+        }
+
+        Label {
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+            text: hostIndex < 0
+                  ? qsTr("No console selected. Highlight a registered PS5 below.")
+                  : qsTr("Provisioning uses the highlighted console (index %1). Backend code is separate and is not matched by nickname.").arg(hostIndex)
+            color: "#ffcc80"
         }
 
         TextField {
@@ -43,7 +53,7 @@ Rectangle {
         RowLayout {
             Button {
                 text: qsTr("Provision selected host")
-                onClicked: Chiaki.nax5ProvisionHost(0, consoleCode.text.trim())
+                onClicked: Chiaki.nax5ProvisionHost(hostIndex, consoleCode.text.trim())
             }
             Button {
                 text: qsTr("Test provisioned")

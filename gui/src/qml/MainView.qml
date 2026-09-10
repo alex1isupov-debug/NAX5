@@ -179,6 +179,8 @@ Pane {
         }
     }
 
+    property alias selectedHostIndex: hostsView.currentIndex
+
     ListView {
         id: hostsView
         keyNavigationWraps: true

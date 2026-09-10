@@ -602,11 +602,13 @@ Item {
             }
             Nax5OperatorPanel {
                 id: nax5OperatorPanel
+                hostIndex: nax5MainView.selectedHostIndex
                 anchors.top: nax5PlayPanel.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
             }
             MainView {
+                id: nax5MainView
                 anchors.top: nax5OperatorPanel.bottom
                 anchors.left: parent.left
                 anchors.right: parent.right
