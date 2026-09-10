@@ -41,6 +41,10 @@ static Nax5SessionError connectionErrorFromCode(const QString &code, int http_st
         return Nax5SessionErrorForbidden;
     if (code == QLatin1String("SESSION_NOT_FOUND"))
         return Nax5SessionErrorNotFound;
+    if (code == QLatin1String("CONSOLE_HOST_NOT_CONFIGURED"))
+        return Nax5SessionErrorHostNotConfigured;
+    if (code == QLatin1String("OPERATOR_TEST_REQUIRED"))
+        return Nax5SessionErrorOperatorTestRequired;
     if (code == QLatin1String("INVALID_CONNECTION_MATERIAL")
         || code == QLatin1String("UNSUPPORTED_CONNECTION_VERSION")
         || code == QLatin1String("CONNECTION_NOT_AVAILABLE")

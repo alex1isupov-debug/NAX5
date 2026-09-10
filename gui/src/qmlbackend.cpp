@@ -702,9 +702,27 @@ bool QmlBackend::autoConnect() const
     return auto_connect_mac.GetValue();
 }
 
+#include "nax5/nax5runtime.h"
+
 bool QmlBackend::operatorMode() const
 {
     return Nax5Runtime::operatorMode();
+}
+
+QString QmlBackend::nax5LastOperatorConsoleCode() const
+{
+    return Nax5Runtime::lastOperatorConsoleCode();
+}
+
+void QmlBackend::setNax5LastOperatorConsoleCode(const QString &code)
+{
+    if (!Nax5Runtime::operatorMode())
+        return;
+    const QString trimmed = code.trimmed();
+    if (Nax5Runtime::lastOperatorConsoleCode() == trimmed)
+        return;
+    Nax5Runtime::setLastOperatorConsoleCode(trimmed);
+    emit nax5LastOperatorConsoleCodeChanged();
 }
 
 bool QmlBackend::nax5RemotePlayAllowed() const
@@ -1556,6 +1574,7 @@ void QmlBackend::nax5ProvisionHost(int index, const QString &consoleCode)
 {
     if (!Nax5Runtime::operatorMode() || !nax5_session)
         return;
+    setNax5LastOperatorConsoleCode(consoleCode);
     auto server = displayServerAt(index);
     RegisteredHost host;
     if (server.registered)
@@ -1581,12 +1600,14 @@ void QmlBackend::nax5ProvisionHost(int index, const QString &consoleCode)
 
 void QmlBackend::nax5ActivateConsole(const QString &consoleCode)
 {
+    setNax5LastOperatorConsoleCode(consoleCode);
     if (nax5_session)
         nax5_session->operatorActivate(consoleCode);
 }
 
 void QmlBackend::nax5OperatorTest(const QString &consoleCode)
 {
+    setNax5LastOperatorConsoleCode(consoleCode);
     if (nax5_session)
         nax5_session->operatorTest(consoleCode);
 }

@@ -91,6 +91,8 @@ static void test_http_errors()
     expect(nax5ParseConnectionResponse(403, "{\"code\":\"SESSION_NOT_OWNED\"}").error == Nax5SessionErrorForbidden, "owner mismatch");
     expect(nax5ParseConnectionResponse(404, "{\"code\":\"SESSION_NOT_FOUND\"}").error == Nax5SessionErrorNotFound, "missing session");
     expect(nax5ParseConnectionResponse(409, "{\"code\":\"INVALID_STATE\"}").error == Nax5SessionErrorInvalidConnectionMaterial, "expired or terminal");
+    expect(nax5ParseConnectionResponse(409, "{\"code\":\"CONSOLE_HOST_NOT_CONFIGURED\"}").error == Nax5SessionErrorHostNotConfigured, "host not configured");
+    expect(nax5ParseConnectionResponse(409, "{\"code\":\"OPERATOR_TEST_REQUIRED\"}").error == Nax5SessionErrorOperatorTestRequired, "test required");
     expect(nax5ParseConnectionResponse(0, "x").error == Nax5SessionErrorNetworkError, "timeout");
     expect(nax5ParseConnectionResponse(200, "not-json").error == Nax5SessionErrorInvalidResponse, "malformed json");
 }
@@ -137,7 +139,54 @@ static void test_operator_namespace()
     expect(Nax5Runtime::settingsApplicationName() == QStringLiteral("NAX5"), "product app");
     qputenv("NAX5_OPERATOR_MODE", "1");
     expect(Nax5Runtime::settingsApplicationName() == QStringLiteral("NAX5-Operator"), "operator app");
+    const QString previous = Nax5Runtime::lastOperatorConsoleCode();
+    Nax5Runtime::setLastOperatorConsoleCode(QStringLiteral("PS5-439"));
+    expect(Nax5Runtime::lastOperatorConsoleCode() == QStringLiteral("PS5-439"), "operator persist");
+    Nax5Runtime::setLastOperatorConsoleCode(previous);
     qunsetenv("NAX5_OPERATOR_MODE");
+    Nax5Runtime::setLastOperatorConsoleCode(QStringLiteral("PS5-439"));
+    expect(Nax5Runtime::lastOperatorConsoleCode().isEmpty(), "product namespace skipped");
+}
+
+static void test_vanilla_vs_transient_connect_info_parity()
+{
+    const QByteArray regist = sixteen('K');
+    const QByteArray morning = sixteen('M');
+    const int target = 1000100;
+    const QString host = QStringLiteral("192.168.1.9");
+    const QString nickname = QStringLiteral("PS5-439");
+    const QString pin = QStringLiteral("0000");
+
+    Nax5ConnectionMaterial vanilla;
+    vanilla.version = Nax5ConnectionContractVersion;
+    vanilla.target = target;
+    vanilla.host = host;
+    vanilla.nickname = nickname;
+    vanilla.regist_key = regist;
+    vanilla.morning = morning;
+    vanilla.console_pin = pin;
+
+    const QByteArray dto = QStringLiteral(
+        "{\"session\":{\"id\":\"operator-test\",\"status\":\"CONNECTING\"},"
+        "\"connection\":{\"version\":1,\"target\":%1,\"host\":\"%2\",\"nickname\":\"%3\","
+        "\"registKey\":\"%4\",\"morning\":\"%5\",\"consolePin\":\"%6\"}}")
+        .arg(target)
+        .arg(host)
+        .arg(nickname)
+        .arg(QString::fromLatin1(b64(regist)))
+        .arg(QString::fromLatin1(b64(morning)))
+        .arg(pin)
+        .toUtf8();
+    const Nax5ConnectionParseResult parsed = nax5ParseConnectionResponse(200, dto);
+    expect(parsed.error == Nax5SessionErrorNone, "transient parse");
+    expect(parsed.material.target == vanilla.target, "target parity");
+    expect(parsed.material.host == vanilla.host, "host parity");
+    expect(parsed.material.nickname == vanilla.nickname, "nickname parity");
+    expect(parsed.material.console_pin == vanilla.console_pin, "pin parity");
+    expect(parsed.material.regist_key == vanilla.regist_key, "regist bytes");
+    expect(parsed.material.morning == vanilla.morning, "morning bytes");
+    expect(parsed.material.regist_key.size() == Nax5RegistKeySize, "regist length");
+    expect(parsed.material.morning.size() == Nax5MorningSize, "morning length");
 }
 
 int main()
@@ -149,6 +198,7 @@ int main()
     test_cleanup_and_duplicate_state();
     test_decode_and_operator_test_payload();
     test_operator_namespace();
+    test_vanilla_vs_transient_connect_info_parity();
     if (g_failed)
     {
         std::fprintf(stderr, "%d NAX5 connection tests failed\n", g_failed);

@@ -36,6 +36,8 @@ Rectangle {
             id: consoleCode
             Layout.fillWidth: true
             placeholderText: qsTr("Backend console code, e.g. PS5-439")
+            text: Chiaki.nax5LastOperatorConsoleCode
+            onEditingFinished: Chiaki.nax5LastOperatorConsoleCode = text.trim()
         }
 
         RowLayout {

@@ -32,6 +32,7 @@ public:
     quint64 operatorProvision(const QString &session_token, const QString &console_code, const QByteArray &body);
     quint64 operatorActivate(const QString &session_token, const QString &console_code);
     quint64 operatorTestConnection(const QString &session_token, const QString &console_code);
+    quint64 operatorTestResult(const QString &session_token, const QString &console_code, const QByteArray &body);
     void abortAll();
 
 signals:

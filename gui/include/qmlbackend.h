@@ -89,6 +89,7 @@ class QmlBackend : public QObject
     Q_PROPERTY(QVariantList hiddenHosts READ hiddenHosts NOTIFY hiddenHostsChanged)
     Q_PROPERTY(bool autoConnect READ autoConnect NOTIFY autoConnectChanged)
     Q_PROPERTY(bool operatorMode READ operatorMode CONSTANT)
+    Q_PROPERTY(QString nax5LastOperatorConsoleCode READ nax5LastOperatorConsoleCode WRITE setNax5LastOperatorConsoleCode NOTIFY nax5LastOperatorConsoleCodeChanged)
     Q_PROPERTY(PsnConnectState connectState READ connectState WRITE setConnectState NOTIFY connectStateChanged)
     Q_PROPERTY(QVariantList currentControllerMapping READ currentControllerMapping NOTIFY currentControllerMappingChanged)
     Q_PROPERTY(QString currentControllerType READ currentControllerType NOTIFY currentControllerTypeChanged)
@@ -156,6 +157,8 @@ public:
 
     bool autoConnect() const;
     bool operatorMode() const;
+    QString nax5LastOperatorConsoleCode() const;
+    void setNax5LastOperatorConsoleCode(const QString &code);
     Settings *chiakiSettings() const { return settings; }
 
     void psnConnector();
@@ -244,6 +247,7 @@ signals:
     void psnTokenChanged();
     void psnCredsExpired();
     void autoConnectChanged();
+    void nax5LastOperatorConsoleCodeChanged();
     void wakeupStartInitiated();
     void wakeupStartFailed();
     void windowTypeUpdated(WindowType type);

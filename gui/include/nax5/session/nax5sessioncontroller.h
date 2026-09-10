@@ -4,6 +4,8 @@
 #include "nax5/session/nax5sessionerror.h"
 #include "nax5/session/nax5sessionstate.h"
 
+#include <chiaki/session.h>
+
 #include <QObject>
 #include <QString>
 
@@ -71,6 +73,9 @@ private:
     void discardMaterial();
     void applyAssignment(const Nax5SessionParseResult &result);
     void resetLocal();
+    QString errorText(Nax5SessionError error) const;
+    bool isOperatorTest() const;
+    void reportOperatorTestResult(bool passed);
     void syncCurrent();
     void scheduleLeaseSync(const QString &lease_expires_at);
     void onAuthStateChanged();
@@ -82,7 +87,7 @@ private:
     void startStream();
     void onChiakiSessionChanged(StreamSession *session);
     void onStreamConnected();
-    void onStreamQuit();
+    void onStreamQuit(ChiakiQuitReason reason, const QString &reason_str);
     void reportFail();
     void reportEnd();
     quint64 bumpGeneration();
@@ -97,6 +102,7 @@ private:
     QString console_code;
     QString console_region;
     QString session_id;
+    QString operator_console_code;
     QString idempotency_key;
     Nax5ConnectionMaterial material;
     quint64 generation;
@@ -105,6 +111,8 @@ private:
     quint64 current_request_id;
     quint64 cancel_request_id;
     quint64 connection_request_id;
+    quint64 test_result_request_id;
     bool ignore_cancel_result;
     bool stream_was_connected;
+    bool operator_test_active;
 };

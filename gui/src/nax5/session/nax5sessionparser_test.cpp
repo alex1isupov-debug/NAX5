@@ -104,6 +104,7 @@ static void test_state_transitions_and_double_click()
     expect(nax5SessionReduce(Nax5GameSessionStateIdle, Nax5GameSessionActionStreamConnected) == Nax5GameSessionStateIdle, "stale connected after cancel");
     expect(nax5SessionReduce(Nax5GameSessionStateReserving, Nax5GameSessionActionReserveNoCapacity) == Nax5GameSessionStateIdle, "no capacity idle");
     expect(nax5SessionReduce(Nax5GameSessionStateReserving, Nax5GameSessionActionReserveFailed) == Nax5GameSessionStateError, "error");
+    expect(nax5SessionReduce(Nax5GameSessionStateConnecting, Nax5GameSessionActionStreamFailed) == Nax5GameSessionStateError, "failed stream retryable");
     expect(nax5SessionCanStartPlay(Nax5GameSessionStateError), "retry from error");
     expect(nax5SessionReduce(Nax5GameSessionStateFetchingConnection, Nax5GameSessionActionReleaseClicked) == Nax5GameSessionStateCancelling, "release");
     expect(nax5SessionReduce(Nax5GameSessionStateCancelling, Nax5GameSessionActionCancelSucceeded) == Nax5GameSessionStateIdle, "cancelled idle");
@@ -122,6 +123,14 @@ static void test_user_facing_errors_and_no_leak()
     expect(!no_capacity.contains(QStringLiteral("409")), "no status code");
     expect(!nax5SessionPayloadLooksLeaky(kReserved), "clean payload");
     expect(nax5SessionPayloadLooksLeaky("{\"public_host\":\"1.2.3.4\",\"regist_key\":\"aa\"}"), "leaky payload");
+    expect(nax5SessionErrorMessage(Nax5SessionErrorInvalidConnectionMaterial) == QStringLiteral("Не удалось подключиться к консоли."), "product generic");
+    expect(nax5SessionErrorMessage(Nax5SessionErrorHostNotConfigured) == QStringLiteral("Не удалось подключиться к консоли."), "product host generic");
+    expect(nax5SessionErrorMessage(Nax5SessionErrorHostNotConfigured, true) == QStringLiteral("Test failed: console host not configured"), "operator host");
+    expect(nax5SessionErrorMessage(Nax5SessionErrorHostUnreachable, true) == QStringLiteral("Test failed: PS5 unreachable"), "operator unreachable");
+    expect(nax5SessionErrorMessage(Nax5SessionErrorInvalidConnectionMaterial, true).contains(QStringLiteral("authentication")), "operator auth");
+    expect(nax5SessionErrorMessage(Nax5SessionErrorConnectionTimeout, true) == QStringLiteral("Test failed: timeout"), "operator timeout");
+    expect(!nax5SessionErrorMessage(Nax5SessionErrorInvalidConnectionMaterial, true).contains(QStringLiteral("regist")), "no regist");
+    expect(!nax5SessionErrorMessage(Nax5SessionErrorNone, true).contains(QStringLiteral("Test failed")), "cleared error");
 }
 
 static void test_user_agent_version()

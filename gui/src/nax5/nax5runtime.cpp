@@ -1,6 +1,7 @@
 #include "nax5/nax5runtime.h"
 
 #include <QByteArray>
+#include <QSettings>
 
 bool Nax5Runtime::operatorMode()
 {
@@ -20,4 +21,20 @@ QString Nax5Runtime::settingsApplicationName()
 QString Nax5Runtime::settingsOrganizationName()
 {
     return QStringLiteral("NAX5");
+}
+
+QString Nax5Runtime::lastOperatorConsoleCode()
+{
+    if (!operatorMode())
+        return {};
+    QSettings settings(settingsOrganizationName(), settingsApplicationName());
+    return settings.value(QStringLiteral("operator/lastConsoleCode")).toString();
+}
+
+void Nax5Runtime::setLastOperatorConsoleCode(const QString &code)
+{
+    if (!operatorMode())
+        return;
+    QSettings settings(settingsOrganizationName(), settingsApplicationName());
+    settings.setValue(QStringLiteral("operator/lastConsoleCode"), code.trimmed());
 }

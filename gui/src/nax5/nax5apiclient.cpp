@@ -501,6 +501,27 @@ quint64 Nax5ApiClient::operatorTestConnection(const QString &session_token, cons
     return request_id;
 }
 
+quint64 Nax5ApiClient::operatorTestResult(const QString &session_token, const QString &console_code, const QByteArray &body)
+{
+    const quint64 request_id = next_request_id++;
+    const QString path = QStringLiteral("/api/v1/operator/consoles/%1/test-result/").arg(console_code);
+    QNetworkReply *reply = sendJson(QStringLiteral("POST"), path, body, session_token);
+    if (!reply)
+    {
+        Nax5ConnectionParseResult result;
+        result.error = Nax5SessionErrorServerError;
+        emit operatorFinished(request_id, result);
+        return request_id;
+    }
+    active_reply = reply;
+    active_request_id = request_id;
+    active_kind = RequestOperator;
+    connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
+        finishOperator(request_id, reply);
+    });
+    return request_id;
+}
+
 void Nax5ApiClient::finishConnection(quint64 request_id, QNetworkReply *reply)
 {
     if (active_request_id != request_id)
