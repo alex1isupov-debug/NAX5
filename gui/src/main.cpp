@@ -19,6 +19,7 @@ int main(int argc, char *argv[]) { return real_main(argc, argv); }
 #include <controllermanager.h>
 #include <discoverymanager.h>
 #include <qmlmainwindow.h>
+#include "nax5/nax5runtime.h"
 #include <QApplication>
 #include <QtTypes>
 
@@ -73,8 +74,8 @@ int real_main(int argc, char *argv[])
 	qRegisterMetaType<ChiakiRegistEventType>();
 	qRegisterMetaType<ChiakiLogLevel>();
 
-	QGuiApplication::setOrganizationName("NAX5");
-	QGuiApplication::setApplicationName("NAX5");
+	QGuiApplication::setOrganizationName(Nax5Runtime::settingsOrganizationName());
+	QGuiApplication::setApplicationName(Nax5Runtime::settingsApplicationName());
 	QGuiApplication::setApplicationVersion(CHIAKI_VERSION);
 	QGuiApplication::setApplicationDisplayName("NAX5");
 #if defined(Q_OS_MACOS)

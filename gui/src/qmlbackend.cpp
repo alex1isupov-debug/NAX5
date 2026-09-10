@@ -7,6 +7,7 @@
 #include "psntoken.h"
 #include "systemdinhibit.h"
 #include "nax5/nax5authcontroller.h"
+#include "nax5/nax5runtime.h"
 #include "nax5/session/nax5sessioncontroller.h"
 #include "chiaki/remote/holepunch.h"
 #ifdef Q_OS_MACOS
@@ -145,7 +146,7 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
 
     const char *uri = "org.streetpea.chiaking";
     nax5_auth = new Nax5AuthController(this);
-    nax5_session = new Nax5SessionController(nax5_auth, this);
+    nax5_session = new Nax5SessionController(nax5_auth, this, this);
     qmlRegisterSingletonInstance(uri, 1, 0, "Chiaki", this);
     qmlRegisterSingletonInstance(uri, 1, 0, "Nax5Auth", nax5_auth);
     qmlRegisterSingletonInstance(uri, 1, 0, "Nax5Session", nax5_session);
@@ -379,7 +380,7 @@ void QmlBackend::goToSleep()
 {
     qCInfo(chiakiGui) << "About to sleep";
     if (session) {
-        if (this->settings->GetSuspendAction() == SuspendAction::Sleep)
+        if (Nax5Runtime::operatorMode() && this->settings->GetSuspendAction() == SuspendAction::Sleep)
             session->GoToBed();
         session->Stop();
         if(!session_info.duid.isEmpty())
@@ -699,6 +700,11 @@ QVariantList QmlBackend::hosts() const
 bool QmlBackend::autoConnect() const
 {
     return auto_connect_mac.GetValue();
+}
+
+bool QmlBackend::operatorMode() const
+{
+    return Nax5Runtime::operatorMode();
 }
 
 bool QmlBackend::nax5RemotePlayAllowed() const
@@ -1131,16 +1137,18 @@ bool QmlBackend::closeRequested()
 
     bool stop = true;
     if (session->IsConnected()) {
-        switch (settings->GetDisconnectAction()) {
-        case DisconnectAction::Ask:
-            stop = false;
-            emit sessionStopDialogRequested();
-            break;
-        case DisconnectAction::AlwaysSleep:
-            session->GoToBed();
-            break;
-        default:
-            break;
+        if (Nax5Runtime::operatorMode()) {
+            switch (settings->GetDisconnectAction()) {
+            case DisconnectAction::Ask:
+                stop = false;
+                emit sessionStopDialogRequested();
+                break;
+            case DisconnectAction::AlwaysSleep:
+                session->GoToBed();
+                break;
+            default:
+                break;
+            }
         }
     }
 
@@ -1530,7 +1538,7 @@ void QmlBackend::stopSession(bool sleep)
         });
     }
 
-    if (sleep)
+    if (sleep && Nax5Runtime::operatorMode())
         session->GoToBed();
 
     session->Stop();
@@ -1542,6 +1550,45 @@ void QmlBackend::sessionGoHome()
         return;
 
     session->GoHome();
+}
+
+void QmlBackend::nax5ProvisionHost(int index, const QString &consoleCode)
+{
+    if (!Nax5Runtime::operatorMode() || !nax5_session)
+        return;
+    auto server = displayServerAt(index);
+    RegisteredHost host;
+    if (server.registered)
+        host = server.registered_host;
+    else
+    {
+        const QList<RegisteredHost> registered = settings->GetRegisteredHosts();
+        if (registered.isEmpty())
+        {
+            emit error(tr("Provision"), tr("Register the console in Operator Mode first."));
+            return;
+        }
+        host = registered.first();
+    }
+    nax5_session->provisionFromFields(
+        consoleCode,
+        static_cast<int>(host.GetTarget()),
+        host.GetRPRegistKey(),
+        host.GetRPKey(),
+        host.GetConsolePin(),
+        host.GetServerNickname());
+}
+
+void QmlBackend::nax5ActivateConsole(const QString &consoleCode)
+{
+    if (nax5_session)
+        nax5_session->operatorActivate(consoleCode);
+}
+
+void QmlBackend::nax5OperatorTest(const QString &consoleCode)
+{
+    if (nax5_session)
+        nax5_session->operatorTest(consoleCode);
 }
 
 void QmlBackend::enterPin(const QString &pin)

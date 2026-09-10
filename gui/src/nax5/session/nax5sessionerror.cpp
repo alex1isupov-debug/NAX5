@@ -23,6 +23,8 @@ QString nax5SessionErrorMessage(Nax5SessionError error)
         return QStringLiteral("Нельзя освободить чужую сессию.");
     case Nax5SessionErrorNotFound:
         return QStringLiteral("Игровая сессия не найдена.");
+    case Nax5SessionErrorInvalidConnectionMaterial:
+        return QStringLiteral("Не удалось подключиться к консоли.");
     case Nax5SessionErrorNone:
         return QString();
     }

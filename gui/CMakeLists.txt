@@ -43,6 +43,8 @@ set(SOURCE_FILES
 	src/jsonrequester.cpp
 	include/nax5/nax5apiconfig.h
 	src/nax5/nax5apiconfig.cpp
+	include/nax5/nax5runtime.h
+	src/nax5/nax5runtime.cpp
 	include/nax5/nax5autherror.h
 	src/nax5/nax5autherror.cpp
 	include/nax5/nax5authparser.h
@@ -61,6 +63,12 @@ set(SOURCE_FILES
 	src/nax5/session/nax5sessionparser.cpp
 	include/nax5/session/nax5sessioncontroller.h
 	src/nax5/session/nax5sessioncontroller.cpp
+	include/nax5/connection/nax5connectionmaterial.h
+	src/nax5/connection/nax5connectionmaterial.cpp
+	include/nax5/connection/nax5connectionparser.h
+	src/nax5/connection/nax5connectionparser.cpp
+	include/nax5/connection/nax5transienthost.h
+	src/nax5/connection/nax5transienthost.cpp
 	src/qml/qml.qrc
 	include/qmlmainwindow.h
 	src/qmlmainwindow.cpp
@@ -202,4 +210,17 @@ if(CHIAKI_ENABLE_TESTS)
 	target_include_directories(nax5-session-unit PRIVATE include)
 	target_link_libraries(nax5-session-unit Qt::Core)
 	add_test(NAME nax5-session COMMAND nax5-session-unit)
+
+	add_executable(nax5-connection-unit
+		src/nax5/nax5runtime.cpp
+		src/nax5/session/nax5sessionerror.cpp
+		src/nax5/session/nax5sessionstate.cpp
+		src/nax5/session/nax5sessionparser.cpp
+		src/nax5/connection/nax5connectionmaterial.cpp
+		src/nax5/connection/nax5connectionparser.cpp
+		src/nax5/connection/nax5connection_test.cpp
+	)
+	target_include_directories(nax5-connection-unit PRIVATE include)
+	target_link_libraries(nax5-connection-unit Qt::Core)
+	add_test(NAME nax5-connection COMMAND nax5-connection-unit)
 endif()

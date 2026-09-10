@@ -1,6 +1,6 @@
 #include "nax5/nax5apiconfig.h"
 
-#include <QProcessEnvironment>
+#include <QByteArray>
 #include <QUrl>
 
 QString Nax5ApiConfig::defaultBaseUrl()
@@ -10,14 +10,23 @@ QString Nax5ApiConfig::defaultBaseUrl()
 
 QUrl Nax5ApiConfig::baseUrl(QString *error_message)
 {
-    QString configured = QProcessEnvironment::systemEnvironment().value(QStringLiteral("NAX5_API_BASE_URL")).trimmed();
-    if (configured.endsWith(QLatin1Char('/')))
-        configured.chop(1);
-    if (configured.isEmpty())
+    QString configured;
+    if (!qEnvironmentVariableIsSet("NAX5_API_BASE_URL"))
         configured = defaultBaseUrl();
+    else
+    {
+        configured = QString::fromUtf8(qgetenv("NAX5_API_BASE_URL")).trimmed();
+        while (configured.endsWith(QLatin1Char('/')))
+            configured.chop(1);
+        if (configured.isEmpty()) {
+            if (error_message)
+                *error_message = QStringLiteral("Invalid NAX5 API base URL");
+            return QUrl();
+        }
+    }
 
-    const QUrl url(configured);
-    if (!url.isValid() || url.host().isEmpty()) {
+    const QUrl url(configured, QUrl::StrictMode);
+    if (!url.isValid() || url.host().isEmpty() || url.scheme().isEmpty()) {
         if (error_message)
             *error_message = QStringLiteral("Invalid NAX5 API base URL");
         return QUrl();
@@ -44,9 +53,9 @@ QUrl Nax5ApiConfig::baseUrl(QString *error_message)
 QString Nax5ApiConfig::userAgent()
 {
 #ifdef Q_OS_WIN
-    return QStringLiteral("NAX5/0.3 Windows");
+    return QStringLiteral("NAX5/0.4 Windows");
 #else
-    return QStringLiteral("NAX5/0.3");
+    return QStringLiteral("NAX5/0.4");
 #endif
 }
 

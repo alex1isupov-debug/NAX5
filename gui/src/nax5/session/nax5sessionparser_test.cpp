@@ -98,13 +98,20 @@ static void test_state_transitions_and_double_click()
     expect(nax5SessionReduce(Nax5GameSessionStateIdle, Nax5GameSessionActionPlayClicked) == Nax5GameSessionStateReserving, "play");
     expect(!nax5SessionCanStartPlay(Nax5GameSessionStateReserving), "busy cannot play");
     expect(nax5SessionReduce(Nax5GameSessionStateReserving, Nax5GameSessionActionPlayClicked) == Nax5GameSessionStateReserving, "double click ignored");
-    expect(nax5SessionReduce(Nax5GameSessionStateReserving, Nax5GameSessionActionReserveSucceeded) == Nax5GameSessionStateReserved, "reserved");
+    expect(nax5SessionReduce(Nax5GameSessionStateReserving, Nax5GameSessionActionReserveSucceeded) == Nax5GameSessionStateFetchingConnection, "fetching");
+    expect(nax5SessionReduce(Nax5GameSessionStateFetchingConnection, Nax5GameSessionActionConnectionReceived) == Nax5GameSessionStateConnecting, "connecting");
+    expect(nax5SessionReduce(Nax5GameSessionStateConnecting, Nax5GameSessionActionStreamConnected) == Nax5GameSessionStateActive, "active");
+    expect(nax5SessionReduce(Nax5GameSessionStateIdle, Nax5GameSessionActionStreamConnected) == Nax5GameSessionStateIdle, "stale connected after cancel");
     expect(nax5SessionReduce(Nax5GameSessionStateReserving, Nax5GameSessionActionReserveNoCapacity) == Nax5GameSessionStateIdle, "no capacity idle");
     expect(nax5SessionReduce(Nax5GameSessionStateReserving, Nax5GameSessionActionReserveFailed) == Nax5GameSessionStateError, "error");
     expect(nax5SessionCanStartPlay(Nax5GameSessionStateError), "retry from error");
-    expect(nax5SessionReduce(Nax5GameSessionStateReserved, Nax5GameSessionActionReleaseClicked) == Nax5GameSessionStateCancelling, "release");
+    expect(nax5SessionReduce(Nax5GameSessionStateFetchingConnection, Nax5GameSessionActionReleaseClicked) == Nax5GameSessionStateCancelling, "release");
     expect(nax5SessionReduce(Nax5GameSessionStateCancelling, Nax5GameSessionActionCancelSucceeded) == Nax5GameSessionStateIdle, "cancelled idle");
-    expect(nax5SessionReduce(Nax5GameSessionStateReserved, Nax5GameSessionActionSyncedEmpty) == Nax5GameSessionStateIdle, "stale idle");
+    expect(nax5SessionReduce(Nax5GameSessionStateFetchingConnection, Nax5GameSessionActionSyncedEmpty) == Nax5GameSessionStateIdle, "stale idle");
+    expect(nax5SessionReduce(Nax5GameSessionStateConnecting, Nax5GameSessionActionConnectionReceived) == Nax5GameSessionStateConnecting, "connection retry stays connecting");
+    expect(nax5SessionReduce(Nax5GameSessionStateConnecting, Nax5GameSessionActionReleaseClicked) == Nax5GameSessionStateEnding, "connecting release ends");
+    expect(nax5SessionReduce(Nax5GameSessionStateActive, Nax5GameSessionActionReleaseClicked) == Nax5GameSessionStateEnding, "active release ends");
+    expect(nax5SessionReduce(Nax5GameSessionStateIdle, Nax5GameSessionActionConnectionReceived) == Nax5GameSessionStateIdle, "stale connection after logout");
 }
 
 static void test_user_facing_errors_and_no_leak()
@@ -119,7 +126,7 @@ static void test_user_facing_errors_and_no_leak()
 
 static void test_user_agent_version()
 {
-    expect(Nax5ApiConfig::userAgent().startsWith(QStringLiteral("NAX5/0.3")), "user agent 0.3");
+    expect(Nax5ApiConfig::userAgent().startsWith(QStringLiteral("NAX5/0.4")), "user agent 0.4");
 }
 
 int main()

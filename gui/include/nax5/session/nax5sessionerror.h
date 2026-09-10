@@ -14,7 +14,8 @@ enum Nax5SessionError
     Nax5SessionErrorServerError,
     Nax5SessionErrorInvalidResponse,
     Nax5SessionErrorForbidden,
-    Nax5SessionErrorNotFound
+    Nax5SessionErrorNotFound,
+    Nax5SessionErrorInvalidConnectionMaterial
 };
 
 QString nax5SessionErrorMessage(Nax5SessionError error);

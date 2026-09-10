@@ -6,7 +6,10 @@ enum Nax5GameSessionState
 {
     Nax5GameSessionStateIdle = 0,
     Nax5GameSessionStateReserving,
-    Nax5GameSessionStateReserved,
+    Nax5GameSessionStateFetchingConnection,
+    Nax5GameSessionStateConnecting,
+    Nax5GameSessionStateActive,
+    Nax5GameSessionStateEnding,
     Nax5GameSessionStateCancelling,
     Nax5GameSessionStateError
 };
@@ -18,6 +21,11 @@ enum Nax5GameSessionAction
     Nax5GameSessionActionReserveNoCapacity,
     Nax5GameSessionActionReserveDenied,
     Nax5GameSessionActionReserveFailed,
+    Nax5GameSessionActionConnectionReceived,
+    Nax5GameSessionActionConnectionFailed,
+    Nax5GameSessionActionStreamConnected,
+    Nax5GameSessionActionStreamEnded,
+    Nax5GameSessionActionStreamFailed,
     Nax5GameSessionActionSyncedOccupied,
     Nax5GameSessionActionSyncedEmpty,
     Nax5GameSessionActionReleaseClicked,
@@ -30,3 +38,4 @@ Nax5GameSessionState nax5SessionReduce(Nax5GameSessionState current, Nax5GameSes
 bool nax5SessionCanStartPlay(Nax5GameSessionState current);
 bool nax5SessionCanRelease(Nax5GameSessionState current);
 bool nax5SessionPlayBusy(Nax5GameSessionState current);
+bool nax5SessionHasAssignment(Nax5GameSessionState current);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nax5/connection/nax5connectionmaterial.h"
 #include "nax5/session/nax5sessionerror.h"
 #include "nax5/session/nax5sessionstate.h"
 
@@ -8,6 +9,9 @@
 
 class Nax5ApiClient;
 class Nax5AuthController;
+class QmlBackend;
+class StreamSession;
+struct Nax5ConnectionParseResult;
 struct Nax5SessionParseResult;
 class QTimer;
 
@@ -27,13 +31,16 @@ class Nax5SessionController : public QObject
     Q_PROPERTY(QString sessionId READ sessionId NOTIFY assignmentChanged)
 
 public:
-    explicit Nax5SessionController(Nax5AuthController *auth, QObject *parent = nullptr);
+    explicit Nax5SessionController(Nax5AuthController *auth, QmlBackend *backend, QObject *parent = nullptr);
     ~Nax5SessionController();
 
     int state() const { return static_cast<int>(session_state); }
     bool reserving() const { return session_state == Nax5GameSessionStateReserving; }
-    bool reserved() const { return session_state == Nax5GameSessionStateReserved; }
-    bool cancelling() const { return session_state == Nax5GameSessionStateCancelling; }
+    bool reserved() const { return nax5SessionHasAssignment(session_state); }
+    bool cancelling() const
+    {
+        return session_state == Nax5GameSessionStateCancelling || session_state == Nax5GameSessionStateEnding;
+    }
     bool playEnabled() const;
     bool releaseEnabled() const { return nax5SessionCanRelease(session_state); }
     QString statusText() const { return status_text; }
@@ -45,6 +52,9 @@ public:
     Q_INVOKABLE void play();
     Q_INVOKABLE void release();
     Q_INVOKABLE void releaseAndLogout();
+    Q_INVOKABLE void operatorActivate(const QString &console_code);
+    Q_INVOKABLE void operatorTest(const QString &console_code);
+    void provisionFromFields(const QString &console_code, int target, const QByteArray &regist_key, const QByteArray &morning, const QString &console_pin, const QString &nickname);
     void cancelBestEffort();
 
 signals:
@@ -58,6 +68,7 @@ private:
     void setStatusText(const QString &text);
     void setError(Nax5SessionError error);
     void clearAssignment();
+    void discardMaterial();
     void applyAssignment(const Nax5SessionParseResult &result);
     void resetLocal();
     void syncCurrent();
@@ -66,8 +77,18 @@ private:
     void onReserveFinished(quint64 request_id, const Nax5SessionParseResult &result);
     void onCurrentFinished(quint64 request_id, const Nax5SessionParseResult &result);
     void onCancelFinished(quint64 request_id, const Nax5SessionParseResult &result);
+    void onConnectionFinished(quint64 request_id, const Nax5ConnectionParseResult &result);
+    void fetchConnection();
+    void startStream();
+    void onChiakiSessionChanged(StreamSession *session);
+    void onStreamConnected();
+    void onStreamQuit();
+    void reportFail();
+    void reportEnd();
+    quint64 bumpGeneration();
 
     Nax5AuthController *auth;
+    QmlBackend *backend;
     Nax5ApiClient *api;
     QTimer *lease_timer;
     Nax5GameSessionState session_state;
@@ -77,8 +98,13 @@ private:
     QString console_region;
     QString session_id;
     QString idempotency_key;
+    Nax5ConnectionMaterial material;
+    quint64 generation;
+    quint64 stream_generation;
     quint64 reserve_request_id;
     quint64 current_request_id;
     quint64 cancel_request_id;
+    quint64 connection_request_id;
     bool ignore_cancel_result;
+    bool stream_was_connected;
 };

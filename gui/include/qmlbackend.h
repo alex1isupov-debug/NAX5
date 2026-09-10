@@ -88,6 +88,7 @@ class QmlBackend : public QObject
     Q_PROPERTY(QVariantList hosts READ hosts NOTIFY hostsChanged)
     Q_PROPERTY(QVariantList hiddenHosts READ hiddenHosts NOTIFY hiddenHostsChanged)
     Q_PROPERTY(bool autoConnect READ autoConnect NOTIFY autoConnectChanged)
+    Q_PROPERTY(bool operatorMode READ operatorMode CONSTANT)
     Q_PROPERTY(PsnConnectState connectState READ connectState WRITE setConnectState NOTIFY connectStateChanged)
     Q_PROPERTY(QVariantList currentControllerMapping READ currentControllerMapping NOTIFY currentControllerMappingChanged)
     Q_PROPERTY(QString currentControllerType READ currentControllerType NOTIFY currentControllerTypeChanged)
@@ -154,6 +155,8 @@ public:
     void finishAutoRegister(const ChiakiRegisteredHost &host);
 
     bool autoConnect() const;
+    bool operatorMode() const;
+    Settings *chiakiSettings() const { return settings; }
 
     void psnConnector();
 
@@ -189,6 +192,9 @@ public:
     Q_INVOKABLE bool registerHost(const QString &host, const QString &psn_id, const QString &pin, const QString &cpin, bool broadcast, int target, const QJSValue &callback);
     Q_INVOKABLE void connectToHost(int index, QString nickname = QString());
     Q_INVOKABLE void stopSession(bool sleep);
+    Q_INVOKABLE void nax5ProvisionHost(int index, const QString &consoleCode);
+    Q_INVOKABLE void nax5ActivateConsole(const QString &consoleCode);
+    Q_INVOKABLE void nax5OperatorTest(const QString &consoleCode);
     Q_INVOKABLE void sessionGoHome();
     Q_INVOKABLE void enterPin(const QString &pin);
     Q_INVOKABLE QUrl psnLoginUrl() const;

@@ -3,7 +3,10 @@
 #include "nax5/nax5authparser.h"
 #include "nax5/nax5authstate.h"
 
+#include <QByteArray>
 #include <QString>
+#include <QUrl>
+#include <QtGlobal>
 #include <cstdio>
 
 static int g_failed = 0;
@@ -121,10 +124,99 @@ static void test_error_messages_are_user_facing()
     expect(!nax5AuthErrorMessage(Nax5AuthErrorNetworkError).contains(QStringLiteral("QNetworkReply")), "no qt error");
 }
 
+class EnvGuard
+{
+public:
+    EnvGuard()
+        : had(qEnvironmentVariableIsSet("NAX5_API_BASE_URL"))
+        , old(qgetenv("NAX5_API_BASE_URL"))
+    {
+    }
+    ~EnvGuard()
+    {
+        if (had)
+            qputenv("NAX5_API_BASE_URL", old);
+        else
+            qunsetenv("NAX5_API_BASE_URL");
+    }
+    bool had;
+    QByteArray old;
+};
+
+static QUrl parseBase(QString *error)
+{
+    if (error)
+        error->clear();
+    return Nax5ApiConfig::baseUrl(error);
+}
+
 static void test_default_api_url_is_https()
 {
+    EnvGuard guard;
+    qunsetenv("NAX5_API_BASE_URL");
     expect(Nax5ApiConfig::defaultBaseUrl() == QStringLiteral("https://cloudgta6.com"), "production default");
-    expect(Nax5ApiConfig::userAgent().startsWith(QStringLiteral("NAX5/0.3")), "user agent");
+    expect(Nax5ApiConfig::userAgent().startsWith(QStringLiteral("NAX5/0.4")), "user agent");
+    QString error;
+    const QUrl url = parseBase(&error);
+    expect(url.toString() == QStringLiteral("https://cloudgta6.com"), "no env uses production https");
+    expect(error.isEmpty(), "no env has no error");
+}
+
+static void test_localhost_http_is_allowed()
+{
+    EnvGuard guard;
+    qputenv("NAX5_API_BASE_URL", "http://127.0.0.1:8000");
+    QString error;
+    const QUrl url = parseBase(&error);
+    expect(url.toString() == QStringLiteral("http://127.0.0.1:8000"), "localhost http");
+    expect(error.isEmpty(), "localhost http no error");
+}
+
+static void test_trailing_slash_is_stripped()
+{
+    EnvGuard guard;
+    qputenv("NAX5_API_BASE_URL", "http://127.0.0.1:8000/");
+    QString error;
+    expect(parseBase(&error).toString() == QStringLiteral("http://127.0.0.1:8000"), "trailing slash");
+}
+
+static void test_non_local_http_is_rejected()
+{
+    EnvGuard guard;
+    qputenv("NAX5_API_BASE_URL", "http://example.com");
+    QString error;
+    const QUrl url = parseBase(&error);
+    expect(!url.isValid(), "non-local http rejected");
+    expect(error.contains(QStringLiteral("HTTPS")), "https required message");
+}
+
+static void test_malformed_url_is_controlled_error()
+{
+    EnvGuard guard;
+    qputenv("NAX5_API_BASE_URL", "not a url");
+    QString error;
+    expect(!parseBase(&error).isValid(), "malformed rejected");
+    expect(!error.isEmpty(), "malformed has message");
+}
+
+static void test_invalid_env_does_not_fall_back_to_production()
+{
+    EnvGuard guard;
+    qputenv("NAX5_API_BASE_URL", "http://203.0.113.10");
+    QString error;
+    const QUrl url = parseBase(&error);
+    expect(!url.isValid(), "invalid development url rejected");
+    expect(url.toString() != Nax5ApiConfig::defaultBaseUrl(), "no silent production fallback");
+}
+
+static void test_spaces_and_empty_env_are_controlled()
+{
+    EnvGuard guard;
+    qputenv("NAX5_API_BASE_URL", "   ");
+    QString error;
+    expect(!parseBase(&error).isValid(), "whitespace-only env is invalid");
+    qputenv("NAX5_API_BASE_URL", "http://127.0.0.1:8000 extra");
+    expect(!parseBase(&error).isValid(), "invalid characters rejected");
 }
 
 int main()
@@ -142,6 +234,12 @@ int main()
     test_remote_play_requires_authenticated();
     test_error_messages_are_user_facing();
     test_default_api_url_is_https();
+    test_localhost_http_is_allowed();
+    test_trailing_slash_is_stripped();
+    test_non_local_http_is_rejected();
+    test_malformed_url_is_controlled_error();
+    test_invalid_env_does_not_fall_back_to_production();
+    test_spaces_and_empty_env_are_controlled();
     if (g_failed)
     {
         std::fprintf(stderr, "%d NAX5 auth tests failed\n", g_failed);
