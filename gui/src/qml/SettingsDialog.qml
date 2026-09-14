@@ -500,12 +500,19 @@ DialogView {
                         Label {
                             visible: !Chiaki.operatorMode
                             Layout.preferredWidth: 400
-                            text: qsTr("NAX5 does not sleep the shared console")
+                            text: qsTr("Консоль не переводится в сон")
                         }
 
                         Label {
+                            visible: Chiaki.operatorMode
                             Layout.alignment: Qt.AlignRight
                             text: qsTr("(Ask)")
+                        }
+
+                        Item {
+                            visible: !Chiaki.operatorMode
+                            Layout.preferredWidth: 1
+                            Layout.preferredHeight: 1
                         }
 
                         Label {
@@ -515,14 +522,28 @@ DialogView {
 
                         C.ComboBox {
                             Layout.preferredWidth: 400
+                            visible: Chiaki.operatorMode
                             model: [qsTr("Do Nothing"), qsTr("Enter Sleep Mode")]
                             currentIndex: Chiaki.settings.suspendAction
                             onActivated: index => Chiaki.settings.suspendAction = index
                         }
 
                         Label {
+                            visible: !Chiaki.operatorMode
+                            Layout.preferredWidth: 400
+                            text: qsTr("Консоль не переводится в сон")
+                        }
+
+                        Label {
+                            visible: Chiaki.operatorMode
                             Layout.alignment: Qt.AlignRight
                             text: qsTr("(Do Nothing)")
+                        }
+
+                        Item {
+                            visible: !Chiaki.operatorMode
+                            Layout.preferredWidth: 1
+                            Layout.preferredHeight: 1
                         }
 
                         Label {

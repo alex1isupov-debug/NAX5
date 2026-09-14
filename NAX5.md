@@ -1,0 +1,94 @@
+# NAX5 Client
+
+Native Windows client for NAX5. This repository is a **minimal fork** of [streetpea/chiaki-ng](https://github.com/streetpea/chiaki-ng) at **v1.10.0**.
+
+Root [README.md](README.md) is the product/user-facing note. This file is the developer guide. Upstream licenses and notices stay in [UPSTREAM.md](UPSTREAM.md), [FORK-MAINTENANCE.md](FORK-MAINTENANCE.md), [COPYING](COPYING), and [LICENSES](LICENSES).
+
+Current branch and SHA: workspace [RELEASES.md](../RELEASES.md). GitHub default can lag the current development branch.
+
+## Purpose
+
+Give an authenticated NAX5 user a Play button that:
+
+1. talks to NAX5 Backend for login, Console assignment, and Session lifecycle;
+2. receives **transient** Remote Play connection material;
+3. starts the **existing** chiaki-ng stream session against a physical PS5.
+
+NAX5 uses chiaki-ng because Remote Play already works there. The product does not invent a second streaming stack.
+
+## Owns
+
+- NAX5 identity, settings isolation, Windows packaging
+- Native control-plane HTTP client (`X-Session-Token`)
+- Session reservation / connection / connected / fail / end
+- Transient `StreamSessionConnectInfo` adapter
+- Product and operator QML chrome (`LoginView`, `Nax5PlayPanel`, `Nax5AccountBar`, `Nax5OperatorPanel`)
+
+## Does not own
+
+- Remote Play protocol, decode/render, audio, input, pacing, codecs, crypto, streaming sockets
+- Django API behavior or Caddy routing
+- Website UI
+- Durable PS5 secret storage (backend runtime data)
+
+## Main entry points
+
+- `gui/src/main.cpp` — Qt application; QSettings org/app come from `Nax5Runtime`
+- `gui/src/qml/Main.qml` + `gui/src/qml/LoginView.qml` — login gate, then product UI
+- `gui/src/nax5/nax5authcontroller.cpp` — native login / me / logout
+- `gui/src/nax5/session/nax5sessioncontroller.cpp` — Play orchestration
+- `gui/src/nax5/connection/nax5transienthost.cpp` — fills chiaki `StreamSessionConnectInfo`
+- `gui/src/qmlbackend.cpp` — existing stream session owner (`createSession`, disconnect)
+
+Default API base is `https://cloudgta6.com`. Override locally with `NAX5_API_BASE_URL` (loopback `http` allowed).
+
+Native login uses `/_allauth/app/v1/auth/login`. Session APIs live under `/api/v1/sessions/`. Those paths are **not** on the public website Caddy allowlist; local/dev backend is the usual control-plane target until an explicit native edge exists.
+
+## Product code location
+
+Put new product logic in:
+
+- `gui/include/nax5/`
+- `gui/src/nax5/`
+  - `nax5/` — auth, API client, runtime
+  - `nax5/session/` — assignment and lifecycle
+  - `nax5/connection/` — material parse + transient host
+
+Product QML currently lives next to upstream QML:
+
+- `gui/src/qml/Nax5*.qml`
+- `gui/src/qml/LoginView.qml`
+
+Keep QML product-named. Avoid new Remote Play behavior in `lib/` or `gui/src/streamsession.cpp`.
+
+Operator mode: env `NAX5_OPERATOR_MODE=1` (or `NAX5_OPERATOR_BUILD`). Operator QSettings are `NAX5/NAX5-Operator` and may use the original chiaki registration flow. Product mode uses `NAX5/NAX5` and must not write `RegisteredHost` / `ManualHost` for Play.
+
+## How Play reaches Remote Play
+
+`Nax5SessionController` reserves a Session, fetches connection material, then calls `nax5FillStreamSessionConnectInfo()` and `QmlBackend::createSession()`. That reuses chiaki-ng `StreamSession`. There is no NAX5 decoder or relay.
+
+Material fields used: host, target, nickname, `regist_key`, `morning`, optional PIN. Keys are overwritten then cleared on `discardMaterial()` / logout. Do not log them.
+
+## Critical invariants
+
+- Do not change Remote Play protocol, video decode/render, audio, controller/input, frame pacing, codec logic, crypto, streaming networking, or renderer/libplacebo without a dedicated architectural decision. See [FORK-MAINTENANCE.md](FORK-MAINTENANCE.md).
+- Product-mode disconnect/stop must **not** send the shared PS5 to sleep. `GoToBed()` is operator-mode only (`QmlBackend::closeRequested` / suspend).
+- New product features must not break vanilla Remote Play behavior used for diagnostics.
+- Session token stays in RAM (`Nax5AuthController::clearSessionToken`). Closing the app requires a new login.
+- Do not persist Play connection material in Chiaki host lists.
+
+## Tests
+
+CMake unit tests:
+
+- `gui/src/nax5/nax5authparser_test.cpp`
+- `gui/src/nax5/session/nax5sessionparser_test.cpp`
+- `gui/src/nax5/connection/nax5connection_test.cpp`
+
+Manual product checks: `ALPHA01-USER-TEST.md` … `ALPHA04-USER-TEST.md` and `TEST-MATRIX.md`. Some Alpha 0.2/0.3 notes still mention the old monorepo path; they are historical. Do not treat them as the backend location.
+
+`ALPHA02-USER-TEST.md` may have intentional local edits. Leave it alone unless a human asks to change it.
+
+## Deployment
+
+This repo is **not** the current deployed production website/backend. Client packages are built from a committed SHA. Record releases in workspace `RELEASES.md`.

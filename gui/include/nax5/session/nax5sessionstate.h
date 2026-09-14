@@ -39,3 +39,6 @@ bool nax5SessionCanStartPlay(Nax5GameSessionState current);
 bool nax5SessionCanRelease(Nax5GameSessionState current);
 bool nax5SessionPlayBusy(Nax5GameSessionState current);
 bool nax5SessionHasAssignment(Nax5GameSessionState current);
+bool nax5SessionShouldFetchOnSyncedOccupied(Nax5GameSessionState current);
+bool nax5SessionShouldResetLocalAfterAbortCurrent(bool current_has_session);
+bool nax5SessionCanCreateStream(bool stream_session_alive);

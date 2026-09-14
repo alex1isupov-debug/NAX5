@@ -45,7 +45,7 @@ Nax5GameSessionState nax5SessionReduce(Nax5GameSessionState current, Nax5GameSes
         if (current == Nax5GameSessionStateCancelling)
             return Nax5GameSessionStateFetchingConnection;
         if (current == Nax5GameSessionStateEnding)
-            return Nax5GameSessionStateActive;
+            return Nax5GameSessionStateError;
         return current;
     }
     return current;
@@ -80,4 +80,19 @@ bool nax5SessionHasAssignment(Nax5GameSessionState current)
         || current == Nax5GameSessionStateActive
         || current == Nax5GameSessionStateEnding
         || current == Nax5GameSessionStateCancelling;
+}
+
+bool nax5SessionShouldFetchOnSyncedOccupied(Nax5GameSessionState current)
+{
+    return current == Nax5GameSessionStateIdle || current == Nax5GameSessionStateError;
+}
+
+bool nax5SessionShouldResetLocalAfterAbortCurrent(bool current_has_session)
+{
+    return !current_has_session;
+}
+
+bool nax5SessionCanCreateStream(bool stream_session_alive)
+{
+    return !stream_session_alive;
 }

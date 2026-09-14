@@ -1,7 +1,8 @@
-
 # NAX5
 
 NAX5 is a minimal Windows client for remote access to a physical PlayStation 5 over the Internet.
+
+Developer guide: [NAX5.md](NAX5.md).
 
 **Current release:** NAX5 Alpha 0.2 for Windows x64
 

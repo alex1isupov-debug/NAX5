@@ -13,7 +13,7 @@ Item {
 
     readonly property var hostWindow: view.Window.window
     property bool sessionError: false
-    property bool sessionLoading: true
+    property bool sessionLoading: !Chiaki.window.hasVideo
     property list<Item> restoreFocusItems
     readonly property bool useSeparateMenuWindow: Chiaki.window.runtimeRendererBackend === 1
     readonly property int streamMenuHeight: 200
@@ -64,21 +64,41 @@ Item {
         separateDialogY = Math.round(hostWindow.y + (hostWindow.height - height) / 2);
     }
 
+    function raiseSeparateStatsOverlay() {
+        if (!useSeparateMenuWindow || !streamStatsWindow.visible)
+            return;
+        streamStatsWindow.raise();
+    }
+
     StackView.onActivating: Chiaki.window.keepVideo = true
     StackView.onDeactivated: Chiaki.window.keepVideo = false
 
-    Component.onCompleted: updateSeparateMenuGeometry()
-    onWidthChanged: updateSeparateMenuGeometry()
-    onHeightChanged: updateSeparateMenuGeometry()
-    onUseSeparateMenuWindowChanged: updateSeparateMenuGeometry()
+    Component.onCompleted: {
+        if (Chiaki.window.hasVideo)
+            sessionLoading = false;
+        updateSeparateMenuGeometry();
+        raiseSeparateStatsOverlay();
+    }
+    onWidthChanged: {
+        updateSeparateMenuGeometry();
+        raiseSeparateStatsOverlay();
+    }
+    onHeightChanged: {
+        updateSeparateMenuGeometry();
+        raiseSeparateStatsOverlay();
+    }
+    onUseSeparateMenuWindowChanged: {
+        updateSeparateMenuGeometry();
+        raiseSeparateStatsOverlay();
+    }
 
     Connections {
         target: view.hostWindow
-        function onXChanged() { view.updateSeparateMenuGeometry() }
-        function onYChanged() { view.updateSeparateMenuGeometry() }
-        function onWidthChanged() { view.updateSeparateMenuGeometry() }
-        function onHeightChanged() { view.updateSeparateMenuGeometry() }
-        function onVisibilityChanged() { view.updateSeparateMenuGeometry() }
+        function onXChanged() { view.updateSeparateMenuGeometry(); view.raiseSeparateStatsOverlay(); }
+        function onYChanged() { view.updateSeparateMenuGeometry(); view.raiseSeparateStatsOverlay(); }
+        function onWidthChanged() { view.updateSeparateMenuGeometry(); view.raiseSeparateStatsOverlay(); }
+        function onHeightChanged() { view.updateSeparateMenuGeometry(); view.raiseSeparateStatsOverlay(); }
+        function onVisibilityChanged() { view.updateSeparateMenuGeometry(); view.raiseSeparateStatsOverlay(); }
     }
 
     QtObject {
@@ -436,11 +456,17 @@ Item {
         color: "transparent"
         modality: Qt.NonModal
         transientParent: view.hostWindow
-        visible: streamStatsVisible && useSeparateMenuWindow
+        visible: streamStatsVisible && useSeparateMenuWindow && separateStatsWidth > 0 && separateStatsHeight > 0
         x: separateStatsX
         y: separateStatsY
-        width: separateStatsWidth
-        height: separateStatsHeight
+        width: separateStatsWidth > 0 ? separateStatsWidth : view.width
+        height: separateStatsHeight > 0 ? separateStatsHeight : view.height
+        onVisibleChanged: {
+            if (visible) {
+                view.updateSeparateMenuGeometry();
+                Qt.callLater(view.raiseSeparateStatsOverlay);
+            }
+        }
         Loader {
             anchors.fill: parent
             sourceComponent: streamStatsContent
@@ -925,7 +951,7 @@ Item {
         ColumnLayout {
             Label {
                 Layout.alignment: Qt.AlignCenter
-                text: qsTr("Disconnect Session")
+                text: Chiaki.operatorMode ? qsTr("Disconnect Session") : qsTr("Завершить сессию?")
                 font.bold: true
                 font.pixelSize: 24
             }
@@ -933,6 +959,7 @@ Item {
             Label {
                 Layout.topMargin: 10
                 Layout.alignment: Qt.AlignCenter
+                visible: Chiaki.operatorMode
                 text: qsTr("Do you want the Console to go into sleep mode?")
                 font.pixelSize: 20
             }
@@ -947,6 +974,7 @@ Item {
                     Layout.preferredWidth: 200
                     Layout.minimumHeight: 80
                     Layout.maximumHeight: 80
+                    visible: Chiaki.operatorMode
                     text: qsTr("Sleep")
                     font.pixelSize: 24
                     Material.roundedScale: Material.SmallScale
@@ -962,10 +990,31 @@ Item {
                 }
 
                 Button {
+                    id: disconnectButton
+                    Layout.preferredWidth: 200
+                    Layout.minimumHeight: 80
+                    Layout.maximumHeight: 80
+                    visible: !Chiaki.operatorMode
+                    text: qsTr("Disconnect")
+                    font.pixelSize: 24
+                    Material.roundedScale: Material.SmallScale
+                    Material.background: activeFocus ? parent.Material.accent : undefined
+                    KeyNavigation.right: cancelButton
+                    Keys.onReturnPressed: clicked()
+                    Keys.onEscapePressed: sessionStopDialog.close()
+                    onVisibleChanged: if (visible) view.grabInput(disconnectButton)
+                    onClicked: {
+                        sessionStopDialog.closeAction = 2;
+                        sessionStopDialog.close();
+                    }
+                }
+
+                Button {
                     id: noButton
                     Layout.preferredWidth: 200
                     Layout.minimumHeight: 80
                     Layout.maximumHeight: 80
+                    visible: Chiaki.operatorMode
                     text: qsTr("No")
                     font.pixelSize: 24
                     Material.roundedScale: Material.SmallScale
@@ -977,6 +1026,22 @@ Item {
                         sessionStopDialog.closeAction = 2;
                         sessionStopDialog.close();
                     }
+                }
+
+                Button {
+                    id: cancelButton
+                    Layout.preferredWidth: 200
+                    Layout.minimumHeight: 80
+                    Layout.maximumHeight: 80
+                    visible: !Chiaki.operatorMode
+                    text: qsTr("Cancel")
+                    font.pixelSize: 24
+                    Material.roundedScale: Material.SmallScale
+                    Material.background: activeFocus ? parent.Material.accent : undefined
+                    KeyNavigation.left: disconnectButton
+                    Keys.onReturnPressed: clicked()
+                    Keys.onEscapePressed: sessionStopDialog.close()
+                    onClicked: sessionStopDialog.close()
                 }
             }
         }
@@ -1002,7 +1067,7 @@ Item {
                 closeAction = 0;
                 view.updateSeparateDialogGeometry(width, height);
                 requestActivate();
-                view.grabInput(separateSleepButton);
+                view.grabInput(Chiaki.operatorMode ? separateSleepButton : separateDisconnectButton);
             } else {
                 view.releaseInput();
                 if (closeAction)
@@ -1023,7 +1088,7 @@ Item {
 
             Label {
                 Layout.alignment: Qt.AlignCenter
-                text: qsTr("Disconnect Session")
+                text: Chiaki.operatorMode ? qsTr("Disconnect Session") : qsTr("Завершить сессию?")
                 font.bold: true
                 font.pixelSize: 24
             }
@@ -1031,6 +1096,7 @@ Item {
             Label {
                 Layout.topMargin: 10
                 Layout.alignment: Qt.AlignCenter
+                visible: Chiaki.operatorMode
                 text: qsTr("Do you want the Console to go into sleep mode?")
                 font.pixelSize: 20
             }
@@ -1045,6 +1111,7 @@ Item {
                     Layout.preferredWidth: 200
                     Layout.minimumHeight: 80
                     Layout.maximumHeight: 80
+                    visible: Chiaki.operatorMode
                     text: qsTr("Sleep")
                     font.pixelSize: 24
                     Material.roundedScale: Material.SmallScale
@@ -1059,10 +1126,30 @@ Item {
                 }
 
                 Button {
+                    id: separateDisconnectButton
+                    Layout.preferredWidth: 200
+                    Layout.minimumHeight: 80
+                    Layout.maximumHeight: 80
+                    visible: !Chiaki.operatorMode
+                    text: qsTr("Disconnect")
+                    font.pixelSize: 24
+                    Material.roundedScale: Material.SmallScale
+                    Material.background: activeFocus ? parent.Material.accent : undefined
+                    KeyNavigation.right: separateCancelButton
+                    Keys.onReturnPressed: clicked()
+                    Keys.onEscapePressed: separateSessionStopWindow.visible = false
+                    onClicked: {
+                        separateSessionStopWindow.closeAction = 2;
+                        separateSessionStopWindow.visible = false;
+                    }
+                }
+
+                Button {
                     id: separateNoButton
                     Layout.preferredWidth: 200
                     Layout.minimumHeight: 80
                     Layout.maximumHeight: 80
+                    visible: Chiaki.operatorMode
                     text: qsTr("No")
                     font.pixelSize: 24
                     Material.roundedScale: Material.SmallScale
@@ -1074,6 +1161,22 @@ Item {
                         separateSessionStopWindow.closeAction = 2;
                         separateSessionStopWindow.visible = false;
                     }
+                }
+
+                Button {
+                    id: separateCancelButton
+                    Layout.preferredWidth: 200
+                    Layout.minimumHeight: 80
+                    Layout.maximumHeight: 80
+                    visible: !Chiaki.operatorMode
+                    text: qsTr("Cancel")
+                    font.pixelSize: 24
+                    Material.roundedScale: Material.SmallScale
+                    Material.background: activeFocus ? parent.Material.accent : undefined
+                    KeyNavigation.left: separateDisconnectButton
+                    Keys.onReturnPressed: clicked()
+                    Keys.onEscapePressed: separateSessionStopWindow.visible = false
+                    onClicked: separateSessionStopWindow.visible = false
                 }
             }
         }
@@ -1249,6 +1352,8 @@ Item {
         function onHasVideoChanged() {
             if (Chiaki.window.hasVideo)
                 sessionLoading = false;
+            view.updateSeparateMenuGeometry();
+            Qt.callLater(view.raiseSeparateStatsOverlay);
         }
 
         function onMenuRequested() {

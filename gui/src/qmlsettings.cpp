@@ -1,5 +1,6 @@
 #include "qmlsettings.h"
 #include "sessionlog.h"
+#include "nax5/nax5runtime.h"
 
 #include <QSet>
 #include <QKeySequence>
@@ -201,11 +202,15 @@ void QmlSettings::setDisconnectAction(int action)
 
 int QmlSettings::suspendAction() const
 {
+    if (!Nax5Runtime::operatorMode())
+        return static_cast<int>(SuspendAction::Nothing);
     return static_cast<int>(settings->GetSuspendAction());
 }
 
 void QmlSettings::setSuspendAction(int action)
 {
+    if (!Nax5Runtime::operatorMode())
+        action = static_cast<int>(SuspendAction::Nothing);
     settings->SetSuspendAction(static_cast<SuspendAction>(action));
     emit suspendActionChanged();
 }

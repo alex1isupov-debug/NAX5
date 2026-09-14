@@ -118,6 +118,17 @@ static void test_state_transitions_and_double_click()
     expect(nax5SessionReduce(Nax5GameSessionStateConnecting, Nax5GameSessionActionReleaseClicked) == Nax5GameSessionStateEnding, "connecting release ends");
     expect(nax5SessionReduce(Nax5GameSessionStateActive, Nax5GameSessionActionReleaseClicked) == Nax5GameSessionStateEnding, "active release ends");
     expect(nax5SessionReduce(Nax5GameSessionStateIdle, Nax5GameSessionActionConnectionReceived) == Nax5GameSessionStateIdle, "stale connection after logout");
+    expect(nax5SessionReduce(Nax5GameSessionStateIdle, Nax5GameSessionActionSyncedOccupied) == Nax5GameSessionStateFetchingConnection, "leftover occupying");
+    expect(nax5SessionShouldFetchOnSyncedOccupied(Nax5GameSessionStateIdle), "idle leftover fetches");
+    expect(nax5SessionShouldFetchOnSyncedOccupied(Nax5GameSessionStateError), "error leftover fetches");
+    expect(!nax5SessionShouldFetchOnSyncedOccupied(Nax5GameSessionStateConnecting), "live leftover does not refetch");
+    expect(!nax5SessionShouldFetchOnSyncedOccupied(Nax5GameSessionStateActive), "active leftover does not refetch");
+    expect(!nax5SessionCanStartPlay(Nax5GameSessionStateFetchingConnection), "leftover occupying play busy");
+    expect(nax5SessionCanRelease(Nax5GameSessionStateFetchingConnection), "leftover occupying can release");
+    expect(nax5SessionReduce(Nax5GameSessionStateEnding, Nax5GameSessionActionCancelFailed) == Nax5GameSessionStateError, "end fail after local stop");
+    expect(nax5SessionReduce(Nax5GameSessionStateEnding, Nax5GameSessionActionCancelFailed) != Nax5GameSessionStateActive, "end fail is not active");
+    expect(nax5SessionCanStartPlay(Nax5GameSessionStateError), "play after failed end");
+    expect(nax5SessionReduce(Nax5GameSessionStateCancelling, Nax5GameSessionActionCancelFailed) == Nax5GameSessionStateFetchingConnection, "cancel fail keeps assignment");
 }
 
 static void test_user_facing_errors_and_no_leak()
@@ -166,6 +177,19 @@ static void test_shutdown_and_stale_lifecycle()
     expect(nax5StreamQuitMutation(false, false) == Nax5TerminalMutationFail, "quit before connected");
     expect(nax5ShutdownMutation(Nax5GameSessionStateConnecting, false) == Nax5TerminalMutationFail, "shutdown connecting without local connection");
     expect(nax5ShutdownMutation(Nax5GameSessionStateConnecting, false) != Nax5TerminalMutationEnd, "never-connected connecting is not ended");
+    expect(nax5ReleaseMutation(Nax5GameSessionStateConnecting, false) == Nax5TerminalMutationFail, "handshake release fails");
+    expect(nax5ReleaseMutation(Nax5GameSessionStateConnecting, false) != Nax5TerminalMutationEnd, "handshake release is not end");
+    expect(nax5ReleaseMutation(Nax5GameSessionStateActive, true) == Nax5TerminalMutationEnd, "active release ends");
+    expect(nax5ReleaseMutation(Nax5GameSessionStateFetchingConnection, false) == Nax5TerminalMutationCancel, "reserved release cancels");
+    expect(nax5ReleaseMutation(Nax5GameSessionStateReserving, false) == Nax5TerminalMutationCancel, "reserving abort cancels leftover");
+    expect(nax5SessionTerminalBlocksPlay(Nax5TerminalMutationEnd), "end in-flight blocks play");
+    expect(nax5SessionTerminalBlocksPlay(Nax5TerminalMutationFail), "fail in-flight blocks play");
+    expect(!nax5SessionTerminalBlocksPlay(Nax5TerminalMutationNone), "no terminal allows play");
+    expect(!nax5SessionTerminalBlocksPlay(Nax5TerminalMutationCancel), "cancel does not block idle play");
+    expect(!nax5SessionCanCreateStream(true), "old stream blocks create");
+    expect(nax5SessionCanCreateStream(false), "create when stream gone");
+    expect(nax5SessionShouldResetLocalAfterAbortCurrent(false), "abort reset when current empty");
+    expect(!nax5SessionShouldResetLocalAfterAbortCurrent(true), "abort keeps occupying current");
     expect(nax5StreamQuitMutation(true, true) == Nax5TerminalMutationNone, "operator test no product end");
     expect(nax5AcceptAsync(2, 2, 9, 9), "same generation request");
     expect(!nax5AcceptAsync(3, 2, 9, 9), "stale generation ignored");
@@ -189,6 +213,34 @@ static void test_logout_and_connected_end_races()
     expect(!nax5SessionCanRelease(Nax5GameSessionStateEnding), "end already pending");
 }
 
+static void test_leftover_current_and_terminal_races()
+{
+    const Nax5GameSessionState leftover = nax5SessionReduce(Nax5GameSessionStateIdle, Nax5GameSessionActionSyncedOccupied);
+    expect(leftover == Nax5GameSessionStateFetchingConnection, "idle leftover to fetching");
+    expect(nax5SessionShouldFetchOnSyncedOccupied(Nax5GameSessionStateIdle), "idle leftover must fetch");
+    expect(!nax5SessionCanStartPlay(leftover), "leftover without fetch would gray play");
+    expect(nax5SessionCanRelease(leftover), "leftover can release");
+    expect(nax5SessionReduce(Nax5GameSessionStateError, Nax5GameSessionActionSyncedOccupied) == Nax5GameSessionStateFetchingConnection, "error leftover to fetching");
+    expect(nax5SessionShouldFetchOnSyncedOccupied(Nax5GameSessionStateError), "error leftover must fetch");
+    expect(nax5SessionReduce(Nax5GameSessionStateConnecting, Nax5GameSessionActionSyncedOccupied) == Nax5GameSessionStateConnecting, "current during stream stays");
+    expect(nax5SessionReduce(Nax5GameSessionStateActive, Nax5GameSessionActionSyncedOccupied) == Nax5GameSessionStateActive, "current during active stays");
+    expect(nax5SessionShouldResetLocalAfterAbortCurrent(false), "abort reset only after empty current");
+    expect(!nax5SessionShouldResetLocalAfterAbortCurrent(true), "abort does not reset occupying current");
+    expect(nax5SessionReduce(Nax5GameSessionStateReserving, Nax5GameSessionActionReleaseClicked) == Nax5GameSessionStateCancelling, "abort reserving waits on current");
+    expect(!nax5SessionCanStartPlay(Nax5GameSessionStateCancelling), "abort reserving play busy");
+    expect(nax5SessionTerminalBlocksPlay(Nax5TerminalMutationEnd), "disconnect end blocks play bump");
+    expect(nax5SessionTerminalBlocksPlay(Nax5TerminalMutationFail), "disconnect fail blocks play bump");
+    expect(!nax5SessionCanCreateStream(true), "old stream blocks createSession");
+    expect(nax5SessionCanCreateStream(false), "createSession after stream gone");
+    expect(nax5ReleaseMutation(Nax5GameSessionStateConnecting, false) == Nax5TerminalMutationFail, "handshake release fail");
+    expect(nax5ReleaseMutation(Nax5GameSessionStateActive, false) == Nax5TerminalMutationEnd, "active release end");
+    expect(nax5SessionReduce(Nax5GameSessionStateEnding, Nax5GameSessionActionCancelFailed) == Nax5GameSessionStateError, "local stop cancel fail idle-error");
+    expect(nax5SessionCanStartPlay(nax5SessionReduce(Nax5GameSessionStateEnding, Nax5GameSessionActionCancelFailed)), "play after local stop fail");
+    expect(nax5ParseReserveResponse(401, "{\"code\":\"UNAUTHENTICATED\"}").error == Nax5SessionErrorUnauthenticated, "session 401");
+    expect(nax5ParseCurrentResponse(401, "{\"code\":\"UNAUTHENTICATED\"}").error == Nax5SessionErrorUnauthenticated, "current 401");
+    expect(nax5ParseCancelResponse(401, "{\"code\":\"UNAUTHENTICATED\"}").error == Nax5SessionErrorUnauthenticated, "cancel 401");
+}
+
 static void test_operator_multi_host_selection()
 {
     Nax5SyntheticRegisteredHost hosts[2];
@@ -205,6 +257,18 @@ static void test_operator_multi_host_selection()
     expect(nax5ValidateProvisionSelection(1, true, false, QStringLiteral("PS5-439")) == Nax5OperatorHostNotRegistered, "unregistered");
     expect(nax5ValidateProvisionSelection(1, true, true, QString()) == Nax5OperatorHostMissingConsoleCode, "missing code");
     expect(nax5ValidateProvisionSelection(1, true, true, QStringLiteral("PS5-439")) == Nax5OperatorHostOk, "explicit host and code");
+}
+
+static void test_product_operator_parity()
+{
+    expect(!nax5MaySleepConsole(false), "product never GoToBed");
+    expect(nax5MaySleepConsole(true), "operator GoToBed like chiaki-ng");
+    expect(!nax5MayResumeAfterOsSleep(false), "product no resume_session after OS sleep");
+    expect(nax5MayResumeAfterOsSleep(true), "operator resume after OS sleep");
+    expect(!nax5ShowsChiakiQuitDialog(false), "product hides chiaki quit string");
+    expect(nax5ShowsChiakiQuitDialog(true), "operator keeps chiaki quit string");
+    expect(!nax5OperatorHostConnectAllowed(false), "product Play is Nax5Session.play");
+    expect(nax5OperatorHostConnectAllowed(true), "operator host auto-connect remains");
 }
 
 static void test_shutdown_lifetime_qpointer()
@@ -235,7 +299,9 @@ int main()
     test_request_lanes_do_not_abort_unrelated();
     test_shutdown_and_stale_lifecycle();
     test_logout_and_connected_end_races();
+    test_leftover_current_and_terminal_races();
     test_operator_multi_host_selection();
+    test_product_operator_parity();
     test_shutdown_lifetime_qpointer();
     if (g_failed)
     {

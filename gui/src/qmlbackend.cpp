@@ -10,6 +10,7 @@
 #include "nax5/nax5operatorhost.h"
 #include "nax5/nax5runtime.h"
 #include "nax5/session/nax5sessioncontroller.h"
+#include "nax5/session/nax5sessionlifecycle.h"
 #include "chiaki/remote/holepunch.h"
 #ifdef Q_OS_MACOS
 #include "macWakeSleep.h"
@@ -208,6 +209,8 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     {
         connect(psn_auto_connect_timer, &QTimer::timeout, this, [this]
         {
+            if (!nax5OperatorHostConnectAllowed(Nax5Runtime::operatorMode()))
+                return;
             if (!nax5RemotePlayAllowed())
                 return;
             int i = 0;
@@ -383,12 +386,12 @@ void QmlBackend::goToSleep()
 {
     qCInfo(chiakiGui) << "About to sleep";
     if (session) {
-        if (Nax5Runtime::operatorMode() && this->settings->GetSuspendAction() == SuspendAction::Sleep)
+        if (nax5MaySleepConsole(Nax5Runtime::operatorMode()) && this->settings->GetSuspendAction() == SuspendAction::Sleep)
             session->GoToBed();
         session->Stop();
         if(!session_info.duid.isEmpty())
             psnCancel(true);
-        resume_session = true;
+        resume_session = nax5MayResumeAfterOsSleep(Nax5Runtime::operatorMode());
     }
 }
 void QmlBackend::resumeFromSleep()
@@ -402,6 +405,10 @@ void QmlBackend::resumeFromSleep()
     windows_wake_sleep->setWakeState(WindowsWakeState::Awake);
 #endif
     if (resume_session) {
+        if (!nax5MayResumeAfterOsSleep(Nax5Runtime::operatorMode())) {
+            resume_session = false;
+            return;
+        }
         qCInfo(chiakiGui) << "Resuming session...";
         resume_session = false;
         if(session_info.duid.isEmpty())
@@ -467,6 +474,8 @@ void QmlBackend::profileChanged()
     {
         connect(psn_auto_connect_timer, &QTimer::timeout, this, [this]
         {
+            if (!nax5OperatorHostConnectAllowed(Nax5Runtime::operatorMode()))
+                return;
             if (!nax5RemotePlayAllowed())
                 return;
             int i = 0;
@@ -705,8 +714,6 @@ bool QmlBackend::autoConnect() const
     return auto_connect_mac.GetValue();
 }
 
-#include "nax5/nax5runtime.h"
-
 bool QmlBackend::operatorMode() const
 {
     return Nax5Runtime::operatorMode();
@@ -735,6 +742,8 @@ bool QmlBackend::nax5RemotePlayAllowed() const
 
 void QmlBackend::startNax5AutoConnectIfAllowed()
 {
+    if (!nax5OperatorHostConnectAllowed(Nax5Runtime::operatorMode()))
+        return;
     if (!nax5RemotePlayAllowed())
         return;
     if (!autoConnect() || auto_connect_nickname.isEmpty())
@@ -1034,7 +1043,7 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
     });
 
     connect(session, &StreamSession::SessionQuit, this, [this](ChiakiQuitReason reason, const QString &reason_str) {
-        if (chiaki_quit_reason_is_error(reason)) {
+        if (nax5ShowsChiakiQuitDialog(Nax5Runtime::operatorMode()) && chiaki_quit_reason_is_error(reason)) {
             QString m = tr("Chiaki Session has quit") + ":\n" + chiaki_quit_reason_string(reason);
             if (!reason_str.isEmpty())
                 m += "\n" + tr("Reason") + ": \"" + reason_str + "\"";
@@ -1133,6 +1142,7 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
             setConnectState(PsnConnectState::InitiatingConnection);
         emit psnConnect(session, session_info.duid, chiaki_target_is_ps5(session_info.target));
     }
+    emit windowTypeUpdated(settings->GetWindowType());
     if (window->windowState() != Qt::WindowFullScreen)
     {
         if(settings->GetWindowType() == WindowType::CustomResolution)
@@ -1156,20 +1166,23 @@ bool QmlBackend::closeRequested()
     if (!session)
         return true;
 
+    if (!Nax5Runtime::operatorMode()) {
+        emit sessionStopDialogRequested();
+        return false;
+    }
+
     bool stop = true;
     if (session->IsConnected()) {
-        if (Nax5Runtime::operatorMode()) {
-            switch (settings->GetDisconnectAction()) {
-            case DisconnectAction::Ask:
-                stop = false;
-                emit sessionStopDialogRequested();
-                break;
-            case DisconnectAction::AlwaysSleep:
-                session->GoToBed();
-                break;
-            default:
-                break;
-            }
+        switch (settings->GetDisconnectAction()) {
+        case DisconnectAction::Ask:
+            stop = false;
+            emit sessionStopDialogRequested();
+            break;
+        case DisconnectAction::AlwaysSleep:
+            session->GoToBed();
+            break;
+        default:
+            break;
         }
     }
 
@@ -1424,6 +1437,10 @@ void QmlBackend::setWebEngineHints(QQuickWebEngineProfile *profile)
 
 void QmlBackend::connectToHost(int index, QString nickname)
 {
+    if (!nax5OperatorHostConnectAllowed(Nax5Runtime::operatorMode())) {
+        qCWarning(chiakiGui) << "Product Play uses Nax5Session.play(), not connectToHost";
+        return;
+    }
     if (!nax5RemotePlayAllowed()) {
         qCWarning(chiakiGui) << "Refusing host connection before NAX5 login";
         return;
@@ -1559,7 +1576,7 @@ void QmlBackend::stopSession(bool sleep)
         });
     }
 
-    if (sleep && Nax5Runtime::operatorMode())
+    if (sleep && nax5MaySleepConsole(Nax5Runtime::operatorMode()))
         session->GoToBed();
 
     session->Stop();
@@ -2313,7 +2330,7 @@ void QmlBackend::updateDiscoveryHosts()
             }
         }
     }
-    if (autoConnect() && nax5RemotePlayAllowed()) {
+    if (nax5OperatorHostConnectAllowed(Nax5Runtime::operatorMode()) && autoConnect() && nax5RemotePlayAllowed()) {
         const int hosts_count = discovery_manager.GetHosts().count();
         for (int i = 0; i < hosts_count; ++i) {
             if (discovery_manager.GetHosts().at(i).GetHostMAC() != auto_connect_mac)

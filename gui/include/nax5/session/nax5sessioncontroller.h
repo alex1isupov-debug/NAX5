@@ -110,6 +110,8 @@ private:
     void sendPendingTerminal();
     void handleTerminalFinished(quint64 request_id, const Nax5SessionParseResult &result, Nax5TerminalMutation mutation);
     bool retryTerminalIfNeeded(const Nax5SessionParseResult &result);
+    bool logoutIfUnauthenticated(Nax5SessionError error);
+    bool streamSessionAlive() const;
     quint64 bumpGeneration();
     QString liveToken() const;
 
@@ -140,4 +142,6 @@ private:
     bool stream_was_connected;
     bool operator_test_active;
     bool shutdown_started;
+    bool awaiting_abort_current;
+    bool pending_start_stream;
 };
