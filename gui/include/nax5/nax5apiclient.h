@@ -36,6 +36,7 @@ public:
     quint64 operatorTestConnection(const QString &session_token, const QString &console_code);
     quint64 operatorTestResult(const QString &session_token, const QString &console_code, const QByteArray &body);
     quint64 postClientReport(const QString &session_token, const QByteArray &body);
+    quint64 postClientEvents(const QString &session_token, const QByteArray &body);
     void abortLane(Nax5ApiLane lane);
     void abortAll();
     bool hasLane(Nax5ApiLane lane) const;

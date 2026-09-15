@@ -1,5 +1,7 @@
 #include "nax5/nax5runtime.h"
 
+#include "nax5/nax5telemetry.h"
+
 #include <QByteArray>
 #include <QSettings>
 
@@ -37,4 +39,9 @@ void Nax5Runtime::setLastOperatorConsoleCode(const QString &code)
         return;
     QSettings settings(settingsOrganizationName(), settingsApplicationName());
     settings.setValue(QStringLiteral("operator/lastConsoleCode"), code.trimmed());
+}
+
+QString Nax5Runtime::installationId()
+{
+    return nax5InstallationId();
 }

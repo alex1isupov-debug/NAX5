@@ -601,6 +601,32 @@ void Nax5ApiClient::finishOperator(quint64 request_id, QNetworkReply *reply)
     reply->deleteLater();
 }
 
+quint64 Nax5ApiClient::postClientEvents(const QString &session_token, const QByteArray &body)
+{
+    const quint64 request_id = next_request_id++;
+    QNetworkReply *reply = sendJson(
+        Nax5ApiLaneTelemetry,
+        request_id,
+        QStringLiteral("POST"),
+        QStringLiteral("/api/v1/client-events/"),
+        body,
+        session_token);
+    if (!reply)
+        return request_id;
+    connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
+        if (!completeLive(request_id))
+        {
+            reply->deleteLater();
+            return;
+        }
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (status != 200 && status != 201 && status != 204)
+            qCWarning(nax5Api) << "client-events upload failed" << status;
+        reply->deleteLater();
+    });
+    return request_id;
+}
+
 quint64 Nax5ApiClient::postClientReport(const QString &session_token, const QByteArray &body)
 {
     const quint64 request_id = next_request_id++;

@@ -104,7 +104,8 @@ private:
     void fetchConnection();
     void startStream();
     void onChiakiSessionChanged(StreamSession *session);
-    void onStreamConnected();
+    void onStreamTransportConnected();
+    void onStreamFirstFrame();
     void onStreamQuit(ChiakiQuitReason reason, const QString &reason_str);
     void reportFail();
     void reportEnd();
@@ -117,6 +118,7 @@ private:
     void abortReserveAndSyncCurrent();
     void waitForShutdownIo();
     void submitClientReport(Nax5ClientReportKind kind);
+    void emitTelemetry(const QString &event_type);
     bool streamSessionAlive() const;
     quint64 bumpGeneration();
     QString liveToken() const;
@@ -146,6 +148,7 @@ private:
     quint64 operator_request_id;
     bool ignore_cancel_result;
     bool stream_was_connected;
+    bool stream_first_frame_seen;
     bool operator_test_active;
     bool shutdown_started;
     bool awaiting_abort_current;

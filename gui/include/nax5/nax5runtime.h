@@ -10,4 +10,5 @@ public:
     static QString settingsOrganizationName();
     static QString lastOperatorConsoleCode();
     static void setLastOperatorConsoleCode(const QString &code);
+    static QString installationId();
 };

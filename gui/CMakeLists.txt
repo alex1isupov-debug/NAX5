@@ -49,6 +49,8 @@ set(SOURCE_FILES
 	src/nax5/nax5processlog.cpp
 	include/nax5/nax5clientreport.h
 	src/nax5/nax5clientreport.cpp
+	include/nax5/nax5telemetry.h
+	src/nax5/nax5telemetry.cpp
 	include/nax5/nax5autherror.h
 	src/nax5/nax5autherror.cpp
 	include/nax5/nax5authparser.h
@@ -251,4 +253,15 @@ if(CHIAKI_ENABLE_TESTS)
 	target_include_directories(nax5-connection-unit PRIVATE include)
 	target_link_libraries(nax5-connection-unit Qt::Core)
 	add_test(NAME nax5-connection COMMAND nax5-connection-unit)
+
+	add_executable(nax5-telemetry-unit
+		src/nax5/nax5runtime.cpp
+		src/nax5/nax5processlog.cpp
+		src/nax5/nax5telemetry.cpp
+		src/nax5/nax5telemetry_test.cpp
+	)
+	target_include_directories(nax5-telemetry-unit PRIVATE include)
+	target_compile_definitions(nax5-telemetry-unit PRIVATE CHIAKI_VERSION="test" NAX5_CLIENT_SHA="testsha")
+	target_link_libraries(nax5-telemetry-unit Qt::Core)
+	add_test(NAME nax5-telemetry COMMAND nax5-telemetry-unit)
 endif()

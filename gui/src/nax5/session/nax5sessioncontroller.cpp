@@ -6,6 +6,7 @@
 #include "nax5/nax5apilane.h"
 #include "nax5/nax5authcontroller.h"
 #include "nax5/nax5clientreport.h"
+#include "nax5/nax5telemetry.h"
 #include "nax5/nax5processlog.h"
 #include "nax5/nax5runtime.h"
 #include "nax5/session/nax5sessionparser.h"
@@ -42,6 +43,7 @@ Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBacken
     , operator_request_id(0)
     , ignore_cancel_result(false)
     , stream_was_connected(false)
+    , stream_first_frame_seen(false)
     , operator_test_active(false)
     , shutdown_started(false)
     , awaiting_abort_current(false)
@@ -211,6 +213,7 @@ void Nax5SessionController::resetLocal()
     operator_console_code.clear();
     ignore_cancel_result = false;
     stream_was_connected = false;
+    stream_first_frame_seen = false;
     operator_test_active = false;
     awaiting_abort_current = false;
     pending_start_stream = false;
@@ -257,6 +260,16 @@ void Nax5SessionController::onAuthStateChanged()
     resetLocal();
 }
 
+void Nax5SessionController::emitTelemetry(const QString &event_type)
+{
+    if (!auth || liveToken().isEmpty())
+        return;
+    const QByteArray body = nax5BuildClientEventBatch(event_type, session_id);
+    if (nax5ClientEventPayloadContainsSecrets(body))
+        return;
+    api->postClientEvents(liveToken(), body);
+}
+
 void Nax5SessionController::play()
 {
     if (!playEnabled())
@@ -276,6 +289,7 @@ void Nax5SessionController::play()
     setStatusText(QStringLiteral("Ищем свободную консоль..."));
     setState(nax5SessionReduce(session_state, Nax5GameSessionActionPlayClicked));
     qCInfo(nax5SessionLog) << "play start";
+    emitTelemetry(QStringLiteral("PLAY_REQUESTED"));
     reserve_request_id = api->reserveSession(liveToken(), idempotency_key);
 }
 
@@ -591,6 +605,7 @@ void Nax5SessionController::onReserveFinished(quint64 request_id, const Nax5Sess
         idempotency_key.clear();
         setError(Nax5SessionErrorNone);
         setState(nax5SessionReduce(session_state, Nax5GameSessionActionReserveSucceeded));
+        emitTelemetry(QStringLiteral("RESERVE_SUCCEEDED"));
         fetchConnection();
         return;
     }
@@ -754,6 +769,7 @@ void Nax5SessionController::onConnectionFinished(quint64 request_id, const Nax5C
     setError(Nax5SessionErrorNone);
     setStatusText(QStringLiteral("Подключаемся..."));
     setState(nax5SessionReduce(session_state, Nax5GameSessionActionConnectionReceived));
+    emitTelemetry(QStringLiteral("CONNECTION_MATERIAL_RECEIVED"));
     startStream();
 }
 
@@ -766,11 +782,12 @@ void Nax5SessionController::onChiakiSessionChanged(StreamSession *session)
             startStream();
         return;
     }
-    connect(session, &StreamSession::ConnectedChanged, this, &Nax5SessionController::onStreamConnected, Qt::UniqueConnection);
+    connect(session, &StreamSession::ConnectedChanged, this, &Nax5SessionController::onStreamTransportConnected, Qt::UniqueConnection);
+    connect(session, &StreamSession::FfmpegFrameAvailable, this, &Nax5SessionController::onStreamFirstFrame, Qt::UniqueConnection);
     connect(session, &StreamSession::SessionQuit, this, &Nax5SessionController::onStreamQuit, Qt::UniqueConnection);
 }
 
-void Nax5SessionController::onStreamConnected()
+void Nax5SessionController::onStreamTransportConnected()
 {
     if (stream_generation != generation)
         return;
@@ -778,6 +795,20 @@ void Nax5SessionController::onStreamConnected()
         return;
     if (session_state != Nax5GameSessionStateConnecting)
         return;
+    setStatusText(QStringLiteral("Запуск PS5..."));
+}
+
+void Nax5SessionController::onStreamFirstFrame()
+{
+    if (stream_generation != generation)
+        return;
+    if (stream_first_frame_seen)
+        return;
+    if (!backend || !backend->qmlSession())
+        return;
+    if (session_state != Nax5GameSessionStateConnecting)
+        return;
+    stream_first_frame_seen = true;
     stream_was_connected = true;
     setState(nax5SessionReduce(session_state, Nax5GameSessionActionStreamConnected));
     setStatusText(QStringLiteral("Игра"));
@@ -786,6 +817,7 @@ void Nax5SessionController::onStreamConnected()
         reportOperatorTestResult(true);
         return;
     }
+    emitTelemetry(QStringLiteral("STREAM_CONNECTED"));
     if (auth && !session_id.isEmpty())
         connected_request_id = api->markConnected(auth->sessionToken(), session_id);
 }
@@ -935,6 +967,7 @@ void Nax5SessionController::operatorTest(const QString &console_code)
     operator_console_code = console_code.trimmed();
     operator_test_active = true;
     stream_was_connected = false;
+    stream_first_frame_seen = false;
     session_id.clear();
     Nax5Runtime::setLastOperatorConsoleCode(operator_console_code);
     setError(Nax5SessionErrorNone);

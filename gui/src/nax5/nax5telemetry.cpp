@@ -1,0 +1,99 @@
+#include "nax5/nax5telemetry.h"
+
+#include "nax5/nax5processlog.h"
+#include "nax5/nax5runtime.h"
+
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QRegularExpression>
+#include <QSettings>
+#include <QUuid>
+
+namespace {
+
+QString settingsKey()
+{
+    return QStringLiteral("telemetry/installation_id");
+}
+
+QString clientVersion()
+{
+    return QStringLiteral(CHIAKI_VERSION);
+}
+
+QJsonObject installationObject()
+{
+    QJsonObject installation;
+    installation.insert(QStringLiteral("installation_id"), nax5InstallationId());
+    installation.insert(QStringLiteral("client_version"), clientVersion());
+    installation.insert(QStringLiteral("client_sha"), nax5ClientSha());
+    installation.insert(QStringLiteral("platform"), QStringLiteral("windows"));
+#if defined(Q_OS_WIN)
+    installation.insert(QStringLiteral("os_version"), QStringLiteral("windows"));
+#else
+    installation.insert(QStringLiteral("os_version"), QString());
+#endif
+    installation.insert(QStringLiteral("locale"), QStringLiteral("ru-RU"));
+    return installation;
+}
+
+QVector<QJsonObject> g_pending_events;
+
+} // namespace
+
+QString nax5InstallationId()
+{
+    QSettings settings(Nax5Runtime::settingsOrganizationName(), Nax5Runtime::settingsApplicationName());
+    QString existing = settings.value(settingsKey()).toString();
+    if (!existing.isEmpty())
+        return existing;
+    const QString generated = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    settings.setValue(settingsKey(), generated);
+    return generated;
+}
+
+QByteArray nax5BuildClientEventBatch(const QString &event_type, const QString &session_public_id)
+{
+    QJsonObject event;
+    event.insert(QStringLiteral("event_id"), QUuid::createUuid().toString(QUuid::WithoutBraces));
+    event.insert(QStringLiteral("event_type"), event_type);
+    event.insert(QStringLiteral("client_version"), clientVersion());
+    event.insert(QStringLiteral("client_sha"), nax5ClientSha());
+    if (!session_public_id.isEmpty())
+        event.insert(QStringLiteral("session_public_id"), session_public_id);
+
+    QJsonObject root;
+    root.insert(QStringLiteral("installation"), installationObject());
+    QJsonArray events;
+    events.append(event);
+    root.insert(QStringLiteral("events"), events);
+    return QJsonDocument(root).toJson(QJsonDocument::Compact);
+}
+
+bool nax5ClientEventPayloadContainsSecrets(const QByteArray &json)
+{
+    static const QRegularExpression forbidden(
+        QStringLiteral("(password|session[_-]?token|x-session-token|regist[_-]?key|morning|authorization:)"),
+        QRegularExpression::CaseInsensitiveOption);
+    return forbidden.match(QString::fromUtf8(json)).hasMatch();
+}
+
+void nax5QueueClientEvent(const QString &event_type, const QString &session_public_id)
+{
+    QJsonObject event;
+    event.insert(QStringLiteral("event_id"), QUuid::createUuid().toString(QUuid::WithoutBraces));
+    event.insert(QStringLiteral("event_type"), event_type);
+    event.insert(QStringLiteral("client_version"), clientVersion());
+    event.insert(QStringLiteral("client_sha"), nax5ClientSha());
+    if (!session_public_id.isEmpty())
+        event.insert(QStringLiteral("session_public_id"), session_public_id);
+    g_pending_events.append(event);
+}
+
+void nax5FlushClientEvents(const QString &session_token, QObject *api_client)
+{
+    Q_UNUSED(session_token);
+    Q_UNUSED(api_client);
+    g_pending_events.clear();
+}
