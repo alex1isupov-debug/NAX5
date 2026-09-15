@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 # Build and package NAX5 Alpha 0.5 production user ZIP (+ optional Inno installer).
-# Run from MSYS2 MINGW64. Requires: cmake, ninja, gcc, zip, git, deploy-windows-msys2.sh deps.
+# Run from MSYS2 MINGW64.
 set -euo pipefail
 
 export PATH="/mingw64/bin:/usr/bin:/bin:${PATH}"
 export MSYSTEM=MINGW64
 export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
 export LDD_TIMEOUT=10
+
+if ! /mingw64/bin/python3 -c 'import google.protobuf' >/dev/null 2>&1; then
+  echo "Missing mingw-w64-x86_64-python-protobuf. Install with:" >&2
+  echo "  pacman -S mingw-w64-x86_64-python-protobuf" >&2
+  exit 1
+fi
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BUILD="${NAX5_BUILD_DIR:-$ROOT/build-alpha05}"
@@ -76,51 +82,34 @@ bash "$ROOT/scripts/deploy-windows-msys2.sh" \
   /mingw64 \
   gui/src/qml
 
-cat > "$STAGE/qt.conf" <<'EOF'
-[Paths]
-Prefix = .
-EOF
+printf '%s\n' '[Paths]' 'Prefix = .' > "$STAGE/qt.conf"
 
 BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-EXE_SIZE="$(wc -c < "$STAGE/chiaki.exe" | tr -d ' ')"
+EXE_SIZE="$(wc -c < "$STAGE/chiaki.exe" | tr -d "[:space:]")"
 
 cp -a "$STAGE" "$USER_DIR"
 rm -f "$USER_DIR"/start-nax5-*.cmd
 rm -f "$USER_DIR"/ALPHA0*.md
 
 cp -f "$ROOT/docs/acceptance/ALPHA05-USER-TEST.md" "$USER_DIR/ALPHA05-USER-TEST.md"
+cp -f "$ROOT/scripts/release/README-USER-alpha05.txt" "$USER_DIR/README-USER.txt"
 
-cat > "$USER_DIR/README-USER.txt" <<'EOF'
-NAX5 Alpha 0.5 - portable Windows x64
-
-1. Extract the full ZIP to a new folder. Do not run from inside the archive.
-2. Launch chiaki.exe from that folder. Keep DLLs, qml, platforms, and qt.conf together.
-3. API base is https://cloudgta6.com - do not set NAX5_API_BASE_URL.
-4. Do not set NAX5_OPERATOR_MODE.
-5. SmartScreen warnings are expected for this unsigned alpha build.
-6. PS5 should be in rest mode, not fully powered off.
-7. Play requires verified email and ACTIVE access status on cloudgta6.com.
-8. Logs: %AppData%\Roaming\NAX5\NAX5\log\
-9. Save report button writes a ZIP to Desktop and uploads log tails when logged in.
-10. Logout exits NAX5 account only; it does not power off the PS5.
-EOF
-
-cat > "$USER_DIR/BUILD-INFO.txt" <<EOF
-NAX5 Alpha 0.5 portable Windows x64
-release: ${RELEASE_TAG}
-profile: product
-repo: nax5-client
-branch: ${BRANCH}
-commit: ${SHA}
-describe: ${DESCRIBE}
-built: ${BUILT}
-configuration: Release
-chiaki.exe bytes: ${EXE_SIZE}
-default API: https://cloudgta6.com
-launch: chiaki.exe
-unit tests: nax5-auth-unit, nax5-session-unit, nax5-connection-unit passed
-features: login, reserve, auto Remote Play, process log, client-reports, session hardening
-EOF
+{
+  echo "NAX5 Alpha 0.5 portable Windows x64"
+  echo "release: ${RELEASE_TAG}"
+  echo "profile: product"
+  echo "repo: nax5-client"
+  echo "branch: ${BRANCH}"
+  echo "commit: ${SHA}"
+  echo "describe: ${DESCRIBE}"
+  echo "built: ${BUILT}"
+  echo "configuration: Release"
+  echo "chiaki.exe bytes: ${EXE_SIZE}"
+  echo "default API: https://cloudgta6.com"
+  echo "launch: chiaki.exe"
+  echo "unit tests: nax5-auth-unit, nax5-session-unit, nax5-connection-unit passed"
+  echo "features: login, reserve, auto Remote Play, process log, client-reports, session hardening"
+} > "$USER_DIR/BUILD-INFO.txt"
 
 if find "$USER_DIR" -iname '*.cmd' | grep -q .; then
   echo "User pack must not contain .cmd launchers" >&2
@@ -137,16 +126,13 @@ echo "USER_ZIP=$USER_ZIP"
 echo "SHA256=$SHA256"
 ls -l "$USER_ZIP"
 
-ISCC_X86='/c/Program Files (x86)/Inno Setup 6/ISCC.exe'
-ISCC_X64='/c/Program Files/Inno Setup 6/ISCC.exe'
-ISCC_USER="/c/Users/${USERNAME}/AppData/Local/Programs/Inno Setup 6/ISCC.exe"
 ISCC=""
-if [[ -f "$ISCC_X86" ]]; then
-  ISCC="$ISCC_X86"
-elif [[ -f "$ISCC_X64" ]]; then
-  ISCC="$ISCC_X64"
-elif [[ -f "$ISCC_USER" ]]; then
-  ISCC="$ISCC_USER"
+if [[ -f '/c/Program Files (x86)/Inno Setup 6/ISCC.exe' ]]; then
+  ISCC='/c/Program Files (x86)/Inno Setup 6/ISCC.exe'
+elif [[ -f '/c/Program Files/Inno Setup 6/ISCC.exe' ]]; then
+  ISCC='/c/Program Files/Inno Setup 6/ISCC.exe'
+elif [[ -f "/c/Users/${USERNAME}/AppData/Local/Programs/Inno Setup 6/ISCC.exe" ]]; then
+  ISCC="/c/Users/${USERNAME}/AppData/Local/Programs/Inno Setup 6/ISCC.exe"
 fi
 
 INSTALLER="$OUT/NAX5-Alpha-0.5-Windows-x64-setup.exe"

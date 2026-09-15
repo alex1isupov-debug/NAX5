@@ -5,7 +5,7 @@ Findings from the Task 4.1 implementation and audit. RAM extraction of connectio
 | ID | Severity | Component | Description | Reproduction | Impact | Root cause | Fix now / defer | Target |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | KI-001 | P1 | Task 3 manual | User A release → User B reserve is not user-confirmed | Two local accounts, one READY console | Capacity gate incomplete | Manual step not executed | Confirm before Alpha 0.5 WAN test | Alpha 0.5 |
-| KI-011 | P1 | Product gate | Client Play requires `ACTIVE`; backend reserve accepts `INVITED` | INVITED user logs in | Play button disabled | Intentional client gate | Align site/admin or accept ACTIVE-only | Alpha 0.5 |
+| KI-011 | fixed Alpha 0.5 | Product gate | Eligibility unified: verified email + `ACTIVE` for reserve/Play | INVITED user logs in | Play disabled; reserve 403 | Client gate extended to backend + site copy | Deploy backend/web RC | Alpha 0.5 |
 | KI-002 | TASK5 SECURITY RISK | NAX5 RAM | `registKey` / morning exist in process memory for the stream lifetime | Product Play after connection | User with local debugger can dump keys | Required for libchiaki session | Defer. Do not obfuscate | Task 5 |
 | KI-003 | P2 | Vanilla parity | Public WAN IP uses remote 720p profile | `isLocalAddress(host)` false | Lower WAN resolution vs LAN | Upstream `StreamSessionConnectInfo` | Do not change in Task 4 | later quality task |
 | KI-004 | P2 | Packaging | Clean Release portable and vanilla control build were not produced in this session | No `chiaki.exe` in the worktree | Manual operator test needs a package | MSYS2 build not run here | Build before physical PIN | Task 4 package |

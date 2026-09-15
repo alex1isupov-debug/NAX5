@@ -13,6 +13,12 @@ tool_dir="$3"
 msys_prefix="$4"
 qml_dir="$5"
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source_root="$(cd "$script_dir/.." && pwd)"
+if [[ "$qml_dir" != /* ]]; then
+    qml_dir="$source_root/$qml_dir"
+fi
+
 mkdir -p "$output_dir"
 cp "$exe_path" "$output_dir/"
 
@@ -121,21 +127,9 @@ done
     rm -f "$output_dir"/d3dcompiler*.dll
 )
 
-# Include the source license and downstream attribution/test notices in the
+# Include the source license and downstream attribution notices in the
 # portable NAX5 distribution.
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source_root="$(cd "$script_dir/.." && pwd)"
 cp "$source_root/COPYING" "$output_dir/COPYING"
 cp -a "$source_root/LICENSES" "$output_dir/LICENSES"
 cp "$source_root/UPSTREAM.md" "$output_dir/UPSTREAM.md"
 cp "$source_root/THIRD-PARTY-NOTICES.md" "$output_dir/THIRD-PARTY-NOTICES.md"
-cp "$source_root/ALPHA01-USER-TEST.md" "$output_dir/ALPHA01-USER-TEST.md"
-if [[ -f "$source_root/ALPHA02-USER-TEST.md" ]]; then
-    cp "$source_root/ALPHA02-USER-TEST.md" "$output_dir/ALPHA02-USER-TEST.md"
-fi
-if [[ -f "$source_root/ALPHA03-USER-TEST.md" ]]; then
-    cp "$source_root/ALPHA03-USER-TEST.md" "$output_dir/ALPHA03-USER-TEST.md"
-fi
-if [[ -f "$source_root/ALPHA04-USER-TEST.md" ]]; then
-    cp "$source_root/ALPHA04-USER-TEST.md" "$output_dir/ALPHA04-USER-TEST.md"
-fi

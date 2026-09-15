@@ -1,0 +1,42 @@
+name: NAX5 product checks
+
+on:
+  pull_request:
+    branches:
+      - main
+      - task4-auto-remote-play
+      - nax5-alpha-0.1
+  push:
+    branches:
+      - main
+      - task4-auto-remote-play
+      - nax5-alpha-0.1
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify product QML contract
+        shell: pwsh
+        run: ./scripts/nax5/verify-qml-product-mode.ps1
+      - name: Verify no host persistence
+        shell: pwsh
+        run: ./scripts/nax5/verify-no-host-persistence.ps1
+      - name: Verify settings contract
+        shell: pwsh
+        run: ./scripts/nax5/verify-settings-contract.ps1
+      - name: Verify start-nax5-local helper
+        shell: pwsh
+        run: ./scripts/nax5/verify-start-nax5-local.ps1
+      - name: Verify Alpha 0.5 packaging metadata
+        shell: pwsh
+        run: |
+          $script = Get-Content scripts/release/build-alpha05-user-pack.sh -Raw
+          if ($script -notmatch 'NAX5-Alpha-0\.5-Windows-x64\.zip') { throw 'missing Alpha 0.5 zip name' }
+          if ($script -notmatch 'alpha-0\.5-build-1') { throw 'missing Alpha 0.5 release tag' }
+          if ($script -match 'alpha-0\.1') { throw 'stale Alpha 0.1 reference in build script' }
