@@ -54,8 +54,9 @@ echo "unit tests passed"
 
 test -f "$EXE"
 
-DESC="$(powershell.exe -NoProfile -Command "[System.Diagnostics.FileVersionInfo]::GetVersionInfo('$(cygpath -w "$EXE")').FileDescription" | tr -d '\r')"
-ORIG="$(powershell.exe -NoProfile -Command "[System.Diagnostics.FileVersionInfo]::GetVersionInfo('$(cygpath -w "$EXE")').OriginalFilename" | tr -d '\r')"
+EXE_WIN="$(cygpath -w "$EXE")"
+DESC="$(powershell.exe -NoProfile -Command "[System.Diagnostics.FileVersionInfo]::GetVersionInfo('$EXE_WIN').FileDescription" | tr -d '\r')"
+ORIG="$(powershell.exe -NoProfile -Command "[System.Diagnostics.FileVersionInfo]::GetVersionInfo('$EXE_WIN').OriginalFilename" | tr -d '\r')"
 if [[ "$DESC" != "NAX5 Remote Play Client" ]]; then
   echo "Unexpected FileDescription: [$DESC]" >&2
   exit 1
@@ -90,18 +91,18 @@ rm -f "$USER_DIR"/ALPHA0*.md
 cp -f "$ROOT/docs/acceptance/ALPHA05-USER-TEST.md" "$USER_DIR/ALPHA05-USER-TEST.md"
 
 cat > "$USER_DIR/README-USER.txt" <<'EOF'
-NAX5 Alpha 0.5 — portable Windows x64
+NAX5 Alpha 0.5 - portable Windows x64
 
 1. Extract the full ZIP to a new folder. Do not run from inside the archive.
 2. Launch chiaki.exe from that folder. Keep DLLs, qml, platforms, and qt.conf together.
-3. API base is https://cloudgta6.com — do not set NAX5_API_BASE_URL.
+3. API base is https://cloudgta6.com - do not set NAX5_API_BASE_URL.
 4. Do not set NAX5_OPERATOR_MODE.
 5. SmartScreen warnings are expected for this unsigned alpha build.
 6. PS5 should be in rest mode, not fully powered off.
 7. Play requires verified email and ACTIVE access status on cloudgta6.com.
 8. Logs: %AppData%\Roaming\NAX5\NAX5\log\
-9. «Сохранить отчёт» saves a ZIP to Desktop and uploads log tails when logged in.
-10. «Выйти» logs out of NAX5; it does not power off the PS5.
+9. Save report button writes a ZIP to Desktop and uploads log tails when logged in.
+10. Logout exits NAX5 account only; it does not power off the PS5.
 EOF
 
 cat > "$USER_DIR/BUILD-INFO.txt" <<EOF
@@ -136,17 +137,17 @@ echo "USER_ZIP=$USER_ZIP"
 echo "SHA256=$SHA256"
 ls -l "$USER_ZIP"
 
+ISCC_X86='/c/Program Files (x86)/Inno Setup 6/ISCC.exe'
+ISCC_X64='/c/Program Files/Inno Setup 6/ISCC.exe'
+ISCC_USER="/c/Users/${USERNAME}/AppData/Local/Programs/Inno Setup 6/ISCC.exe"
 ISCC=""
-for candidate in \
-  "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" \
-  "/c/Program Files/Inno Setup 6/ISCC.exe" \
-  "/c/Users/${USERNAME}/AppData/Local/Programs/Inno Setup 6/ISCC.exe"
-do
-  if [[ -f "$candidate" ]]; then
-    ISCC="$candidate"
-    break
-  fi
-done
+if [[ -f "$ISCC_X86" ]]; then
+  ISCC="$ISCC_X86"
+elif [[ -f "$ISCC_X64" ]]; then
+  ISCC="$ISCC_X64"
+elif [[ -f "$ISCC_USER" ]]; then
+  ISCC="$ISCC_USER"
+fi
 
 INSTALLER="$OUT/NAX5-Alpha-0.5-Windows-x64-setup.exe"
 if [[ -n "$ISCC" ]]; then
