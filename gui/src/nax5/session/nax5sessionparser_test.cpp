@@ -9,6 +9,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QString>
+#include <QByteArray>
 #include <cstdio>
 
 static int g_failed = 0;
@@ -163,6 +164,9 @@ static void test_request_lanes_do_not_abort_unrelated()
     expect(nax5ApiShouldAbortExisting(Nax5ApiLaneReserve, Nax5ApiLaneReserve), "second reserve replaces first");
     expect(!nax5ApiShouldAbortExisting(Nax5ApiLaneQuery, Nax5ApiLaneReserve), "query does not abort reserve");
     expect(!nax5ApiShouldAbortExisting(Nax5ApiLaneOperator, Nax5ApiLaneTerminal), "operator does not abort terminal");
+    expect(nax5ApiLaneAllowsConcurrent(Nax5ApiLaneReport), "report concurrent");
+    expect(!nax5ApiShouldAbortExisting(Nax5ApiLaneTerminal, Nax5ApiLaneReport), "report does not abort terminal");
+    expect(!nax5ApiShouldAbortExisting(Nax5ApiLaneReport, Nax5ApiLaneReserve), "report does not abort reserve");
 }
 
 static void test_shutdown_and_stale_lifecycle()
@@ -177,6 +181,23 @@ static void test_shutdown_and_stale_lifecycle()
     expect(nax5StreamQuitMutation(false, false) == Nax5TerminalMutationFail, "quit before connected");
     expect(nax5ShutdownMutation(Nax5GameSessionStateConnecting, false) == Nax5TerminalMutationFail, "shutdown connecting without local connection");
     expect(nax5ShutdownMutation(Nax5GameSessionStateConnecting, false) != Nax5TerminalMutationEnd, "never-connected connecting is not ended");
+    expect(nax5SessionNeedsQuitRelease(Nax5GameSessionStateReserving), "quit during reserving");
+    expect(nax5SessionNeedsQuitRelease(Nax5GameSessionStateFetchingConnection), "quit during fetch");
+    expect(nax5SessionNeedsQuitRelease(Nax5GameSessionStateCancelling), "quit during cancel");
+    expect(!nax5SessionNeedsQuitRelease(Nax5GameSessionStateIdle), "idle host close without nax5 reserve");
+    expect(!nax5SessionNeedsQuitRelease(Nax5GameSessionStateError), "error host close without occupying");
+    expect(nax5ShutdownNeedsCurrentSync(Nax5GameSessionStateReserving), "reserving shutdown syncs current");
+    expect(!nax5ShutdownNeedsCurrentSync(Nax5GameSessionStateFetchingConnection), "assigned fetch uses cancel not current");
+    expect(!nax5ShutdownNeedsCurrentSync(Nax5GameSessionStateIdle), "idle shutdown no current");
+    expect(nax5ShouldSendTerminalBeforeUnauthLogout(true, true, Nax5TerminalMutationEnd), "401 with session sends end");
+    expect(nax5ShouldSendTerminalBeforeUnauthLogout(true, true, Nax5TerminalMutationFail), "401 connecting sends fail");
+    expect(!nax5ShouldSendTerminalBeforeUnauthLogout(true, false, Nax5TerminalMutationEnd), "401 without token skips terminal");
+    expect(!nax5ShouldSendTerminalBeforeUnauthLogout(false, true, Nax5TerminalMutationFail), "401 without session id skips terminal");
+    expect(nax5PlayEligibilityOk(true, true, QStringLiteral("ACTIVE")), "active verified can play");
+    expect(!nax5PlayEligibilityOk(true, false, QStringLiteral("ACTIVE")), "unverified cannot play");
+    expect(!nax5PlayEligibilityOk(true, true, QStringLiteral("INVITED")), "invited cannot play");
+    expect(!nax5PlayEligibilityOk(true, true, QStringLiteral("WAITLISTED")), "waitlisted cannot play");
+    expect(!nax5PlayEligibilityOk(false, true, QStringLiteral("ACTIVE")), "anonymous cannot play");
     expect(nax5ReleaseMutation(Nax5GameSessionStateConnecting, false) == Nax5TerminalMutationFail, "handshake release fails");
     expect(nax5ReleaseMutation(Nax5GameSessionStateConnecting, false) != Nax5TerminalMutationEnd, "handshake release is not end");
     expect(nax5ReleaseMutation(Nax5GameSessionStateActive, true) == Nax5TerminalMutationEnd, "active release ends");
@@ -271,6 +292,34 @@ static void test_product_operator_parity()
     expect(nax5OperatorHostConnectAllowed(true), "operator host auto-connect remains");
 }
 
+static void test_connected_flag_resets_on_new_play()
+{
+    bool stream_was_connected = true;
+    expect(nax5StreamQuitMutation(stream_was_connected, false) == Nax5TerminalMutationEnd, "connected play ends");
+    stream_was_connected = nax5StreamConnectedOnNewGeneration();
+    expect(!stream_was_connected, "new play generation starts never-connected");
+    expect(nax5StreamQuitMutation(stream_was_connected, false) == Nax5TerminalMutationFail, "handshake timeout after prior success is fail");
+    expect(nax5StreamQuitMutation(stream_was_connected, false) != Nax5TerminalMutationEnd, "handshake timeout is not end");
+}
+
+static void test_product_wakeup_from_material_once()
+{
+    expect(nax5ProductShouldWakeupBeforeCreateSession(), "product wakes before createSession");
+    expect(nax5ProductWakeupSendsPerStartStream() == 1, "one wakeup per startStream");
+    const Nax5MaterialWakeup call = nax5MaterialWakeupCall(QStringLiteral("203.0.113.10"), QByteArray("aabbccdd"), true);
+    expect(call.ready, "wakeup ready");
+    expect(call.host == QStringLiteral("203.0.113.10"), "wakeup host from material");
+    expect(call.regist_key == QByteArray("aabbccdd"), "wakeup regist from material");
+    expect(call.ps5, "wakeup ps5");
+    expect(!nax5MaterialWakeupCall(QString(), QByteArray("aabbccdd"), true).ready, "empty host skips wakeup");
+    expect(nax5OperatorConnectShouldWakeup(true, true), "operator standby discovered wakes");
+    expect(!nax5OperatorConnectShouldWakeup(true, false), "operator ready host no wakeup");
+    expect(!nax5OperatorConnectShouldWakeup(false, true), "operator undiscovered no wakeup");
+    expect(nax5WakeupHostKindName(QStringLiteral("203.0.113.10")) == QStringLiteral("wan"), "public host wan");
+    expect(nax5WakeupHostKindName(QStringLiteral("192.168.0.12")) == QStringLiteral("lan"), "rfc1918 lan");
+    expect(nax5WakeupHostKindName(QStringLiteral("10.8.0.4")) == QStringLiteral("lan"), "10/8 lan");
+}
+
 static void test_shutdown_lifetime_qpointer()
 {
     QObject *owner = new QObject();
@@ -302,6 +351,8 @@ int main()
     test_leftover_current_and_terminal_races();
     test_operator_multi_host_selection();
     test_product_operator_parity();
+    test_connected_flag_resets_on_new_play();
+    test_product_wakeup_from_material_once();
     test_shutdown_lifetime_qpointer();
     if (g_failed)
     {

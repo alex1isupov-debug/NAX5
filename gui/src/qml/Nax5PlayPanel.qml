@@ -21,6 +21,14 @@ Rectangle {
         spacing: 10
 
         Label {
+            visible: Nax5Auth.authenticated && (!Nax5Auth.emailVerified || Nax5Auth.accessStatus !== "ACTIVE")
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+            color: "#ffcc80"
+            text: !Nax5Auth.emailVerified ? qsTr("Подтвердите email") : qsTr("Аккаунт ещё не активен")
+        }
+
+        Label {
             visible: Nax5Session.statusText.length > 0
             Layout.fillWidth: true
             wrapMode: Text.WordWrap

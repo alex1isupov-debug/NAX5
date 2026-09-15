@@ -2,12 +2,14 @@
 
 bool nax5ApiLaneAllowsConcurrent(Nax5ApiLane lane)
 {
-    return lane == Nax5ApiLaneTerminal;
+    return lane == Nax5ApiLaneTerminal || lane == Nax5ApiLaneReport;
 }
 
 bool nax5ApiShouldAbortExisting(Nax5ApiLane existing, Nax5ApiLane incoming)
 {
     if (existing == Nax5ApiLaneTerminal || incoming == Nax5ApiLaneTerminal)
+        return false;
+    if (existing == Nax5ApiLaneReport || incoming == Nax5ApiLaneReport)
         return false;
     if (existing != incoming)
         return false;

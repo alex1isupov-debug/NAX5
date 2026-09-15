@@ -45,6 +45,10 @@ set(SOURCE_FILES
 	src/nax5/nax5apiconfig.cpp
 	include/nax5/nax5runtime.h
 	src/nax5/nax5runtime.cpp
+	include/nax5/nax5processlog.h
+	src/nax5/nax5processlog.cpp
+	include/nax5/nax5clientreport.h
+	src/nax5/nax5clientreport.cpp
 	include/nax5/nax5autherror.h
 	src/nax5/nax5autherror.cpp
 	include/nax5/nax5authparser.h
@@ -127,6 +131,21 @@ add_executable(chiaki WIN32
 		${SOURCE_FILES}
 )
 target_include_directories(chiaki PRIVATE include)
+find_package(Git QUIET)
+set(NAX5_CLIENT_SHA "unknown")
+if(GIT_FOUND)
+	execute_process(
+		COMMAND ${GIT_EXECUTABLE} describe --always --dirty
+		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+		OUTPUT_VARIABLE NAX5_CLIENT_SHA
+		OUTPUT_STRIP_TRAILING_WHITESPACE
+		ERROR_QUIET
+	)
+endif()
+if(NOT NAX5_CLIENT_SHA)
+	set(NAX5_CLIENT_SHA "unknown")
+endif()
+target_compile_definitions(chiaki PRIVATE NAX5_CLIENT_SHA="${NAX5_CLIENT_SHA}")
 
 add_library(placebo-libav-impl src/libav_impl.c)
 target_link_libraries(placebo-libav-impl PkgConfig::LIBPLACEBO FFMPEG::avcodec FFMPEG::avutil FFMPEG::avformat)

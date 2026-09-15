@@ -4,7 +4,7 @@ Native Windows client for NAX5. This repository is a **minimal fork** of [street
 
 Root [README.md](README.md) is the product/user-facing note. This file is the developer guide. Upstream licenses and notices stay in [UPSTREAM.md](UPSTREAM.md), [FORK-MAINTENANCE.md](FORK-MAINTENANCE.md), [COPYING](COPYING), and [LICENSES](LICENSES).
 
-Current branch and SHA: workspace [RELEASES.md](../RELEASES.md). GitHub default can lag the current development branch.
+Current branch: `task4-auto-remote-play`. Record tagged releases in workspace [RELEASES.md](../RELEASES.md).
 
 ## Purpose
 
@@ -23,6 +23,7 @@ NAX5 uses chiaki-ng because Remote Play already works there. The product does no
 - Session reservation / connection / connected / fail / end
 - Transient `StreamSessionConnectInfo` adapter
 - Product and operator QML chrome (`LoginView`, `Nax5PlayPanel`, `Nax5AccountBar`, `Nax5OperatorPanel`)
+- Process logging (`nax5processlog`) and client-reports upload (`nax5clientreport`)
 
 ## Does not own
 
@@ -39,10 +40,12 @@ NAX5 uses chiaki-ng because Remote Play already works there. The product does no
 - `gui/src/nax5/session/nax5sessioncontroller.cpp` — Play orchestration
 - `gui/src/nax5/connection/nax5transienthost.cpp` — fills chiaki `StreamSessionConnectInfo`
 - `gui/src/qmlbackend.cpp` — existing stream session owner (`createSession`, disconnect)
+- `gui/src/nax5/nax5processlog.cpp` — `%AppData%/NAX5/NAX5/log/nax5_*.log`
+- `gui/src/nax5/nax5clientreport.cpp` — ZIP export + `POST /api/v1/client-reports/`
 
 Default API base is `https://cloudgta6.com`. Override locally with `NAX5_API_BASE_URL` (loopback `http` allowed).
 
-Native login uses `/_allauth/app/v1/auth/login`. Session APIs live under `/api/v1/sessions/`. Those paths are **not** on the public website Caddy allowlist; local/dev backend is the usual control-plane target until an explicit native edge exists.
+Native login uses `/_allauth/app/v1/auth/login`. Session APIs live under `/api/v1/sessions/` on the **apex** host only (`cloudgta6.com`, not `www`). See `nax5-backend/docs/NATIVE-EDGE-DESIGN.md`.
 
 ## Product code location
 
@@ -50,7 +53,7 @@ Put new product logic in:
 
 - `gui/include/nax5/`
 - `gui/src/nax5/`
-  - `nax5/` — auth, API client, runtime
+  - `nax5/` — auth, API client, runtime, logging, reports
   - `nax5/session/` — assignment and lifecycle
   - `nax5/connection/` — material parse + transient host
 
@@ -69,6 +72,21 @@ Operator mode: env `NAX5_OPERATOR_MODE=1` (or `NAX5_OPERATOR_BUILD`). Operator Q
 
 Material fields used: host, target, nickname, `regist_key`, `morning`, optional PIN. Keys are overwritten then cleared on `discardMaterial()` / logout. Do not log them.
 
+## Play eligibility
+
+Product Play requires authenticated user, verified email, and `accessStatus == ACTIVE`. Backend reserve also accepts `INVITED`; the client gate is stricter until product UX aligns.
+
+## Logging
+
+| Layer | Path / endpoint |
+| --- | --- |
+| Process log | `%AppData%/Roaming/NAX5/NAX5/log/nax5_<timestamp>.log` |
+| Stream log | same dir, `chiaki_session_<timestamp>.log` (last 5 kept) |
+| Manual ZIP | Desktop via `Nax5Session.saveReport()` |
+| Server tail | `POST https://cloudgta6.com/api/v1/client-reports/` when logged in |
+
+Server stores JSON under backend `CLIENT_REPORTS_DIR` (production: `/var/nax5/client-reports/<user_id>/`). Not full session archives.
+
 ## Critical invariants
 
 - Do not change Remote Play protocol, video decode/render, audio, controller/input, frame pacing, codec logic, crypto, streaming networking, or renderer/libplacebo without a dedicated architectural decision. See [FORK-MAINTENANCE.md](FORK-MAINTENANCE.md).
@@ -85,10 +103,19 @@ CMake unit tests:
 - `gui/src/nax5/session/nax5sessionparser_test.cpp`
 - `gui/src/nax5/connection/nax5connection_test.cpp`
 
-Manual product checks: `ALPHA01-USER-TEST.md` … `ALPHA04-USER-TEST.md` and `TEST-MATRIX.md`. Some Alpha 0.2/0.3 notes still mention the old monorepo path; they are historical. Do not treat them as the backend location.
+Manual product checks: [docs/acceptance/ALPHA05-USER-TEST.md](docs/acceptance/ALPHA05-USER-TEST.md) and [TEST-MATRIX.md](TEST-MATRIX.md). Older alpha notes are under [docs/acceptance/history/](docs/acceptance/history/).
 
-`ALPHA02-USER-TEST.md` may have intentional local edits. Leave it alone unless a human asks to change it.
+## Packaging
 
-## Deployment
+Production user ZIP:
 
-This repo is **not** the current deployed production website/backend. Client packages are built from a committed SHA. Record releases in workspace `RELEASES.md`.
+```bash
+# MSYS2 MINGW64, clean committed tree
+bash scripts/release/build-alpha05-user-pack.sh
+```
+
+Output: `artifacts/alpha-0.5/NAX5-Alpha-0.5-Windows-x64.zip`
+
+Optional Inno installer when ISCC is installed. Operator/local `.cmd` helpers are **not** included in the user pack.
+
+Record releases in workspace `RELEASES.md` and publish assets to GitHub Releases.

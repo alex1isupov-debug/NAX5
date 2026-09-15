@@ -35,6 +35,13 @@ ToolBar {
         Item { Layout.fillWidth: true }
 
         Button {
+            text: qsTr("Сохранить отчёт")
+            flat: true
+            Material.roundedScale: Material.SmallScale
+            onClicked: Nax5Session.saveReport()
+        }
+
+        Button {
             text: qsTr("Настройки")
             flat: true
             Material.roundedScale: Material.SmallScale

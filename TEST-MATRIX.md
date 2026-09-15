@@ -1,6 +1,6 @@
 # TEST MATRIX
 
-Permanent NAX5 test register. Status is automated unless marked Manual. Commit is filled when the Alpha 0.4 package is tagged.
+Permanent NAX5 test register. Status is automated unless marked Manual. Current target: Alpha 0.5 (`alpha-0.5-build-1`).
 
 | Test | Automated/Manual | Backend/NAX5/Vanilla/Both | LAN/WAN | Commit | Status | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -32,6 +32,8 @@ Permanent NAX5 test register. Status is automated unless marked Manual. Commit i
 | Allocator concurrency | Automated | Backend | n/a | | Existing Task 3 suite | |
 | Launcher Qt offscreen smoke | Automated | NAX5 | n/a | | Limited | requires packaged `chiaki.exe` + Qt offscreen |
 | Operator physical PIN + READY | Manual | Both | LAN | | **STOP here** | do not simulate PS5 |
-| Product 0 registered hosts automatic play | Manual | NAX5 | LAN | | After operator PASS | |
+| Product 0 registered hosts automatic play | Manual | NAX5 | LAN/WAN | | **NOT TESTED** | Alpha 0.5 user pack |
+| Client-reports upload on quit/manual | Manual | NAX5 | WAN | | **NOT TESTED** | apex `/api/v1/client-reports/` |
+| Process + session log rotation | Automated | NAX5 | n/a | | Implemented | `nax5processlog`, 5 files |
 | Vanilla A/B 5–10 min | Manual | Both | LAN/WAN | | After user connect | same PC/PS5/controller |
-| 30+ minute soak | Manual | NAX5 | LAN/WAN | | After user connect | heartbeat is Task 6; hard TTL 7200s |
+| 30+ minute soak | Manual | NAX5 | LAN/WAN | | **NOT TESTED** | heartbeat is Task 6; hard TTL 7200s |

@@ -35,6 +35,7 @@ public:
     quint64 operatorActivate(const QString &session_token, const QString &console_code);
     quint64 operatorTestConnection(const QString &session_token, const QString &console_code);
     quint64 operatorTestResult(const QString &session_token, const QString &console_code, const QByteArray &body);
+    quint64 postClientReport(const QString &session_token, const QByteArray &body);
     void abortLane(Nax5ApiLane lane);
     void abortAll();
     bool hasLane(Nax5ApiLane lane) const;
@@ -51,6 +52,7 @@ signals:
     void failFinished(quint64 request_id, const Nax5SessionParseResult &result);
     void endFinished(quint64 request_id, const Nax5SessionParseResult &result);
     void operatorFinished(quint64 request_id, const Nax5ConnectionParseResult &result);
+    void clientReportFinished(quint64 request_id, int http_status);
 
 private:
     struct InFlight
@@ -72,6 +74,7 @@ private:
     void finishFail(quint64 request_id, QNetworkReply *reply);
     void finishEnd(quint64 request_id, QNetworkReply *reply);
     void finishOperator(quint64 request_id, QNetworkReply *reply);
+    void finishClientReport(quint64 request_id, QNetworkReply *reply);
     Nax5SessionParseResult finishSessionNetwork(QNetworkReply *reply, bool *used_body);
     bool completeLive(quint64 request_id);
     void abortInFlight(InFlight &item);

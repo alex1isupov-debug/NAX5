@@ -120,7 +120,8 @@ QNetworkReply *Nax5ApiClient::sendJson(Nax5ApiLane lane, quint64 request_id, con
     item.reply = reply;
     in_flight.append(item);
 
-    qCInfo(nax5Api) << method << path << "lane" << static_cast<int>(lane) << "id" << request_id;
+    if (path != QLatin1String("/_allauth/app/v1/auth/login"))
+        qCInfo(nax5Api) << method << path << "lane" << static_cast<int>(lane) << "id" << request_id;
     return reply;
 }
 
@@ -140,6 +141,7 @@ bool Nax5ApiClient::isNoNetwork(QNetworkReply *reply)
 quint64 Nax5ApiClient::login(const QString &email, const QString &password)
 {
     const quint64 request_id = next_request_id++;
+    qCInfo(nax5Api) << "login start";
     QJsonObject payload;
     payload.insert(QStringLiteral("email"), email);
     payload.insert(QStringLiteral("password"), password);
@@ -204,7 +206,7 @@ void Nax5ApiClient::finishLogin(quint64 request_id, QNetworkReply *reply)
     if (reply->error() != QNetworkReply::NoError && status == 0)
     {
         result.error = nax5MapNetworkFailure(status, reply->error() == QNetworkReply::OperationCanceledError || reply->error() == QNetworkReply::TimeoutError, isNoNetwork(reply));
-        qCWarning(nax5Api) << "login failed: network";
+        qCWarning(nax5Api) << "login fail" << status;
         emit loginFinished(request_id, result);
         reply->deleteLater();
         return;
@@ -212,7 +214,9 @@ void Nax5ApiClient::finishLogin(quint64 request_id, QNetworkReply *reply)
 
     result = nax5ParseLoginResponse(status, reply->readAll());
     if (result.error != Nax5AuthErrorNone)
-        qCWarning(nax5Api) << "login failed:" << result.error;
+        qCWarning(nax5Api) << "login fail" << status;
+    else
+        qCInfo(nax5Api) << "login ok" << status;
     emit loginFinished(request_id, result);
     reply->deleteLater();
 }
@@ -594,5 +598,43 @@ void Nax5ApiClient::finishOperator(quint64 request_id, QNetworkReply *reply)
     Nax5ConnectionParseResult result = nax5ParseOperatorProvisionResponse(status, body);
     qCInfo(nax5Api) << "operator" << status;
     emit operatorFinished(request_id, result);
+    reply->deleteLater();
+}
+
+quint64 Nax5ApiClient::postClientReport(const QString &session_token, const QByteArray &body)
+{
+    const quint64 request_id = next_request_id++;
+    QNetworkReply *reply = sendJson(
+        Nax5ApiLaneReport,
+        request_id,
+        QStringLiteral("POST"),
+        QStringLiteral("/api/v1/client-reports/"),
+        body,
+        session_token);
+    if (!reply)
+    {
+        qCWarning(nax5Api) << "client-report upload failed" << 0;
+        emit clientReportFinished(request_id, 0);
+        return request_id;
+    }
+    connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
+        finishClientReport(request_id, reply);
+    });
+    return request_id;
+}
+
+void Nax5ApiClient::finishClientReport(quint64 request_id, QNetworkReply *reply)
+{
+    if (!completeLive(request_id))
+    {
+        reply->deleteLater();
+        return;
+    }
+    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if (status != 200 && status != 201 && status != 204)
+        qCWarning(nax5Api) << "client-report upload failed" << status;
+    else
+        qCInfo(nax5Api) << "client-report ok" << status;
+    emit clientReportFinished(request_id, status);
     reply->deleteLater();
 }

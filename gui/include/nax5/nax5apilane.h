@@ -7,7 +7,8 @@ enum Nax5ApiLane
     Nax5ApiLaneReserve,
     Nax5ApiLaneConnection,
     Nax5ApiLaneTerminal,
-    Nax5ApiLaneOperator
+    Nax5ApiLaneOperator,
+    Nax5ApiLaneReport
 };
 
 bool nax5ApiLaneAllowsConcurrent(Nax5ApiLane lane);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nax5/connection/nax5connectionmaterial.h"
+#include "nax5/nax5clientreport.h"
 #include "nax5/session/nax5sessionerror.h"
 #include "nax5/session/nax5sessionlifecycle.h"
 #include "nax5/session/nax5sessionstate.h"
@@ -56,6 +57,7 @@ public:
     Q_INVOKABLE void play();
     Q_INVOKABLE void release();
     Q_INVOKABLE void releaseAndLogout();
+    Q_INVOKABLE void saveReport();
     Q_INVOKABLE void operatorActivate(const QString &console_code);
     Q_INVOKABLE void operatorTest(const QString &console_code);
     void provisionFromFields(const QString &console_code, int target, const QByteArray &regist_key, const QByteArray &morning, const QString &console_pin, const QString &nickname);
@@ -111,6 +113,10 @@ private:
     void handleTerminalFinished(quint64 request_id, const Nax5SessionParseResult &result, Nax5TerminalMutation mutation);
     bool retryTerminalIfNeeded(const Nax5SessionParseResult &result);
     bool logoutIfUnauthenticated(Nax5SessionError error);
+    void finishUnauthLogout();
+    void abortReserveAndSyncCurrent();
+    void waitForShutdownIo();
+    void submitClientReport(Nax5ClientReportKind kind);
     bool streamSessionAlive() const;
     quint64 bumpGeneration();
     QString liveToken() const;
@@ -144,4 +150,6 @@ private:
     bool shutdown_started;
     bool awaiting_abort_current;
     bool pending_start_stream;
+    bool unauth_logout_pending;
+    bool client_report_sent_on_shutdown;
 };

@@ -8,9 +8,11 @@
 #include "systemdinhibit.h"
 #include "nax5/nax5authcontroller.h"
 #include "nax5/nax5operatorhost.h"
+#include "nax5/nax5processlog.h"
 #include "nax5/nax5runtime.h"
 #include "nax5/session/nax5sessioncontroller.h"
 #include "nax5/session/nax5sessionlifecycle.h"
+#include "nax5/session/nax5sessionstate.h"
 #include "chiaki/remote/holepunch.h"
 #ifdef Q_OS_MACOS
 #include "macWakeSleep.h"
@@ -81,6 +83,8 @@ static QtMessageHandler qt_msg_handler = nullptr;
 
 static void msg_handler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
+    if (context.category && QLatin1String(context.category).startsWith(QLatin1String("nax5")))
+        nax5ProcessLogWrite(context.category, msg);
     QMutexLocker lock(&chiaki_log_mutex);
     if (!chiaki_log_ctx) {
         qt_msg_handler(type, context, msg);
@@ -144,6 +148,7 @@ QmlBackend::QmlBackend(Settings *settings, QmlMainWindow *window)
     , settings_qml(new QmlSettings(settings, this))
     , window(window)
 {
+    nax5ProcessLogStart();
     qt_msg_handler = qInstallMessageHandler(msg_handler);
 
     const char *uri = "org.streetpea.chiaking";
@@ -1164,7 +1169,14 @@ void QmlBackend::createSession(const StreamSessionConnectInfo &connect_info)
 bool QmlBackend::closeRequested()
 {
     if (!session)
+    {
+        if (nax5_session && nax5SessionNeedsQuitRelease(static_cast<Nax5GameSessionState>(nax5_session->state())))
+        {
+            nax5_session->prepareShutdown();
+            return true;
+        }
         return true;
+    }
 
     if (!Nax5Runtime::operatorMode()) {
         emit sessionStopDialogRequested();
@@ -1632,7 +1644,7 @@ void QmlBackend::nax5OperatorTest(const QString &consoleCode)
 
 void QmlBackend::enterPin(const QString &pin)
 {
-    qCInfo(chiakiGui) << "Set login pin " << pin;
+    qCInfo(chiakiGui) << "Set login pin";
     if (session)
         session->SetLoginPIN(pin);
 }
@@ -1794,6 +1806,16 @@ bool QmlBackend::sendWakeup(const QString &host, const QByteArray &regist_key, b
         return true;
     } catch (const Exception &e) {
         emit error(tr("Wakeup failed"), tr("Failed to send Wakeup packet:\n%1").arg(e.what()));
+        return false;
+    }
+}
+
+bool QmlBackend::sendMaterialWakeup(const QString &host, const QByteArray &regist_key, bool ps5)
+{
+    try {
+        discovery_manager.SendWakeup(host, regist_key, ps5);
+        return true;
+    } catch (const Exception &) {
         return false;
     }
 }
