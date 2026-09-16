@@ -138,7 +138,11 @@ copy_msys_bin 'SDL2.dll'
 copy_msys_bin 'SDL3.dll'
 copy_msys_bin 'libplacebo-*.dll'
 copy_msys_bin 'shaderc_shared.dll'
+copy_msys_bin 'libshaderc_shared.dll'
 copy_msys_bin 'spirv-cross-c-shared.dll'
+copy_msys_bin 'libspirv-cross-c-shared.dll'
+copy_msys_bin 'libssl-*.dll'
+copy_msys_bin 'libcrypto-*.dll'
 
 windeployqt6.exe --no-translations --qmldir="$qml_dir" "$output_dir/$(basename "$exe_path")"
 
@@ -185,3 +189,102 @@ for pattern in avutil-*.dll avcodec-*.dll avformat-*.dll swresample-*.dll; do
     fi
 done
 shopt -u nullglob
+
+if ! command -v objdump >/dev/null; then
+    echo "error: objdump is required to verify portable DLL imports" >&2
+    exit 1
+fi
+
+declare -A system32_dlls=()
+if [[ -d /c/Windows/System32 ]]; then
+    while IFS= read -r system_dll; do
+        system32_dlls["${system_dll,,}"]=1
+    done < <(ls /c/Windows/System32)
+fi
+
+bundle_has_dll() {
+    local needle="$1"
+    local pe_dir="$2"
+    local match
+
+    [[ -f "$pe_dir/$needle" || -f "$output_dir/$needle" ]] && return 0
+    match="$(find "$output_dir" -iname "$needle" -print -quit)"
+    [[ -n "$match" ]]
+}
+
+collect_unresolved_imports() {
+    local pe pe_dir dll base lower
+    while IFS= read -r -d '' pe; do
+        pe_dir="$(dirname "$pe")"
+        while IFS= read -r dll; do
+            [[ -n "$dll" ]] || continue
+            base="${dll##*/}"
+            lower="${base,,}"
+            case "$lower" in
+                api-ms-*.dll|ext-ms-*.dll) continue ;;
+            esac
+            if [[ -n "${system32_dlls[$lower]+x}" ]]; then
+                continue
+            fi
+            if bundle_has_dll "$base" "$pe_dir"; then
+                continue
+            fi
+            printf '%s\n' "$base"
+        done < <(objdump -p "$pe" 2>/dev/null | awk '/DLL Name:/{print $3}' | sed 's/\r$//')
+    done < <(find "$output_dir" \( -iname '*.dll' -o -iname '*.exe' \) -print0)
+}
+
+walk_queued_dependencies() {
+    local current
+    while [[ ${#queue[@]} -gt 0 ]]; do
+        current="${queue[0]}"
+        queue=("${queue[@]:1}")
+
+        if [[ -n "${scanned_paths["$current"]+x}" ]]; then
+            continue
+        fi
+        scanned_paths["$current"]=1
+
+        while IFS= read -r dependency; do
+            enqueue_dependency "$dependency"
+        done < <(extract_dependencies "$current")
+    done
+}
+
+resolve_objdump_imports() {
+    local round dll fail copied
+    local unresolved=()
+
+    for round in 1 2 3 4 5 6; do
+        mapfile -t unresolved < <(collect_unresolved_imports | sort -u)
+        if [[ ${#unresolved[@]} -eq 0 || -z "${unresolved[0]:-}" ]]; then
+            echo "objdump import check passed"
+            return 0
+        fi
+
+        fail=0
+        copied=0
+        for dll in "${unresolved[@]}"; do
+            if [[ -f "$msys_prefix/bin/$dll" ]]; then
+                echo "objdump: copying missing import $dll (round $round)"
+                enqueue_dependency "$msys_prefix/bin/$dll"
+                copied=1
+            else
+                echo "error: unresolved import $dll (not in bundle or $msys_prefix/bin)" >&2
+                fail=1
+            fi
+        done
+        if [[ $fail -ne 0 ]]; then
+            return 1
+        fi
+        if [[ $copied -eq 1 ]]; then
+            walk_queued_dependencies
+        fi
+    done
+
+    echo "error: objdump imports still unresolved after retries:" >&2
+    printf '  %s\n' "${unresolved[@]}" >&2
+    return 1
+}
+
+resolve_objdump_imports

@@ -6,9 +6,9 @@ Build with `scripts/release/build-alpha05-user-pack.sh`. Primary artifact: `arti
 
 ## Install
 
-1. Download `NAX5-windows-installer.exe` from the GitHub release (`alpha-0.5-build-1`).
-2. Extract the **entire** archive to a new folder.
-3. Run `chiaki.exe` from that folder. Do not set `NAX5_API_BASE_URL` or `NAX5_OPERATOR_MODE`.
+1. Download `NAX5-windows.zip` from the GitHub release (`alpha-0.5-build-2`).
+2. Extract the ZIP — it contains one `NAX5.exe` (Inno Setup installer).
+3. Run `NAX5.exe`, finish setup, launch NAX5. Do not set `NAX5_API_BASE_URL` or `NAX5_OPERATOR_MODE`.
 4. SmartScreen may warn on the unsigned build — expected. Stop if Defender reports a real threat.
 
 ## Account

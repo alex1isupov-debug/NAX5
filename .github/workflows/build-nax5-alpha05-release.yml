@@ -39,7 +39,7 @@ jobs:
         with:
           msystem: mingw64
           update: true
-          install: git make unzip zip p7zip
+          install: git make unzip zip
           pacboy: >-
             cc:p
             cmake:p
@@ -77,12 +77,18 @@ jobs:
       - name: Install python protobuf
         run: pip install protobuf
 
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
       - name: Prepare MSYS2 media stack
         run: |
           SKIP_PACMAN=1 bash scripts/release/setup-msys2-build-env.sh
           rm -rf SDL3-* ffmpeg-n7.1-latest-win64-gpl-shared-7.1*
 
       - name: Build Alpha 0.5 user pack
+        env:
+          ISCC: /c/Program Files (x86)/Inno Setup 6/ISCC.exe
         run: bash scripts/release/build-alpha05-user-pack.sh
 
       - name: Upload launcher zip
@@ -90,6 +96,14 @@ jobs:
         with:
           name: NAX5-windows
           path: artifacts/alpha-0.5/NAX5-windows.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload installer zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: NAX5-windows-installer
+          path: artifacts/alpha-0.5/NAX5-windows-installer.zip
           if-no-files-found: error
           retention-days: 14
 
