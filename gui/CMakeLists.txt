@@ -243,6 +243,8 @@ if(CHIAKI_ENABLE_TESTS)
 
 	add_executable(nax5-connection-unit
 		src/nax5/nax5runtime.cpp
+		src/nax5/nax5processlog.cpp
+		src/nax5/nax5telemetry.cpp
 		src/nax5/session/nax5sessionerror.cpp
 		src/nax5/session/nax5sessionstate.cpp
 		src/nax5/session/nax5sessionparser.cpp
@@ -251,6 +253,7 @@ if(CHIAKI_ENABLE_TESTS)
 		src/nax5/connection/nax5connection_test.cpp
 	)
 	target_include_directories(nax5-connection-unit PRIVATE include)
+	target_compile_definitions(nax5-connection-unit PRIVATE CHIAKI_VERSION="test" NAX5_CLIENT_SHA="testsha")
 	target_link_libraries(nax5-connection-unit Qt::Core)
 	add_test(NAME nax5-connection COMMAND nax5-connection-unit)
 

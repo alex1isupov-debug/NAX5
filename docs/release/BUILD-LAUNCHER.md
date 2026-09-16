@@ -101,7 +101,7 @@ gh run list --workflow build-nax5-alpha05-release.yml --limit 1
 
 | Ошибка | Решение |
 | --- | --- |
-| `Refusing to build a release tag with a dirty worktree` | закоммитьте или stash изменения |
+| `Refusing to build a release tag with a dirty worktree` | закоммитьте или stash изменения; после `setup-msys2-build-env.sh` удалите `SDL3-*` и `ffmpeg-n7.1-*` из корня репозитория |
 | `Missing mingw-w64-x86_64-python-protobuf` | `bash scripts/release/setup-msys2-build-env.sh` |
 | `Inno Setup 6 (ISCC.exe) is required` | установите Inno Setup 6, перезапустите MSYS2 |
 | `ldd timed out` | повторите сборку; при повторе проверьте DLL в `build-alpha05/gui` |
