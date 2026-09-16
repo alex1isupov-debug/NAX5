@@ -132,17 +132,23 @@ echo "USER_ZIP=$USER_ZIP"
 echo "SHA256=$SHA256"
 ls -l "$USER_ZIP"
 
-ISCC=""
-if [[ -f '/c/Program Files (x86)/Inno Setup 6/ISCC.exe' ]]; then
-  ISCC='/c/Program Files (x86)/Inno Setup 6/ISCC.exe'
-elif [[ -f '/c/Program Files/Inno Setup 6/ISCC.exe' ]]; then
-  ISCC='/c/Program Files/Inno Setup 6/ISCC.exe'
-elif [[ -f "/c/Users/${USERNAME}/AppData/Local/Programs/Inno Setup 6/ISCC.exe" ]]; then
-  ISCC="/c/Users/${USERNAME}/AppData/Local/Programs/Inno Setup 6/ISCC.exe"
+ISCC="${ISCC:-}"
+if [[ -z "$ISCC" ]]; then
+  iscc_candidates=(
+    "/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+    "/c/Program Files/Inno Setup 6/ISCC.exe"
+    "/c/Users/${USERNAME}/AppData/Local/Programs/Inno Setup 6/ISCC.exe"
+  )
+  for candidate in "${iscc_candidates[@]}"; do
+    if [[ -f "$candidate" ]]; then
+      ISCC="$candidate"
+      break
+    fi
+  done
 fi
 
 if [[ -z "$ISCC" ]]; then
-  echo "Inno Setup 6 (ISCC.exe) is required to build NAX5-windows-installer.exe" >&2
+  echo "Inno Setup 6 ISCC.exe is required to build NAX5-windows-installer.exe" >&2
   echo "Install from https://jrsoftware.org/isinfo.php and re-run this script." >&2
   exit 1
 fi
