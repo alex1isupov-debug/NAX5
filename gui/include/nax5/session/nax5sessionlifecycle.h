@@ -1,5 +1,6 @@
 #pragma once
 
+#include "nax5/session/nax5sessionerror.h"
 #include "nax5/session/nax5sessionstate.h"
 
 #include <QByteArray>
@@ -31,6 +32,8 @@ bool nax5MayResumeAfterOsSleep(bool operator_mode);
 bool nax5ShowsChiakiQuitDialog(bool operator_mode);
 bool nax5OperatorHostConnectAllowed(bool operator_mode);
 bool nax5StreamConnectedOnNewGeneration();
+bool nax5StreamFirstFrameSeenOnNewGeneration();
+bool nax5ShouldRetryMarkConnected(Nax5GameSessionState state, bool shutdown_started, Nax5SessionError error);
 bool nax5ProductShouldWakeupBeforeCreateSession();
 int nax5ProductWakeupSendsPerStartStream();
 bool nax5OperatorConnectShouldWakeup(bool discovered, bool standby);

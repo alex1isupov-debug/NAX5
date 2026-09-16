@@ -134,6 +134,11 @@ QString Nax5SessionController::liveToken() const
 quint64 Nax5SessionController::bumpGeneration()
 {
     stream_was_connected = nax5StreamConnectedOnNewGeneration();
+    stream_first_frame_seen = nax5StreamFirstFrameSeenOnNewGeneration();
+    reserve_request_id = 0;
+    current_request_id = 0;
+    connection_request_id = 0;
+    connected_request_id = 0;
     return ++generation;
 }
 
@@ -175,6 +180,7 @@ bool Nax5SessionController::isOperatorTest() const
 void Nax5SessionController::clearAssignment()
 {
     stream_was_connected = nax5StreamConnectedOnNewGeneration();
+    stream_first_frame_seen = nax5StreamFirstFrameSeenOnNewGeneration();
     session_id.clear();
     console_code.clear();
     console_region.clear();
@@ -282,7 +288,6 @@ void Nax5SessionController::play()
         return;
 
     bumpGeneration();
-    stream_was_connected = nax5StreamConnectedOnNewGeneration();
     idempotency_key = QUuid::createUuid().toString(QUuid::WithoutBraces);
     ignore_cancel_result = false;
     setError(Nax5SessionErrorNone);
@@ -439,7 +444,10 @@ void Nax5SessionController::handleTerminalFinished(quint64 request_id, const Nax
     if (silent)
         ignore_cancel_result = false;
     if (mutation == Nax5TerminalMutationFail || mutation == Nax5TerminalMutationEnd)
+    {
         stream_was_connected = nax5StreamConnectedOnNewGeneration();
+        stream_first_frame_seen = nax5StreamFirstFrameSeenOnNewGeneration();
+    }
     emit stateChanged();
     if (!shutdown_started && silent)
         submitClientReport(mutation == Nax5TerminalMutationFail ? Nax5ClientReportKindError : Nax5ClientReportKindQuit);
@@ -563,6 +571,7 @@ void Nax5SessionController::startStream()
         return;
     }
     pending_start_stream = false;
+    stream_generation = generation;
     StreamSessionConnectInfo info;
     if (!nax5FillStreamSessionConnectInfo(backend->chiakiSettings(), material, &info))
     {
@@ -587,7 +596,6 @@ void Nax5SessionController::startStream()
         }
     }
     backend->createSession(info);
-    stream_generation = generation;
 }
 
 void Nax5SessionController::onReserveFinished(quint64 request_id, const Nax5SessionParseResult &result)
@@ -783,8 +791,11 @@ void Nax5SessionController::onChiakiSessionChanged(StreamSession *session)
         return;
     }
     connect(session, &StreamSession::ConnectedChanged, this, &Nax5SessionController::onStreamTransportConnected, Qt::UniqueConnection);
-    connect(session, &StreamSession::FfmpegFrameAvailable, this, &Nax5SessionController::onStreamFirstFrame, Qt::UniqueConnection);
+    connect(session, &StreamSession::FfmpegFrameAvailable, this, &Nax5SessionController::onStreamFirstFrame,
+            static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::UniqueConnection));
     connect(session, &StreamSession::SessionQuit, this, &Nax5SessionController::onStreamQuit, Qt::UniqueConnection);
+    if (session->GetConnected())
+        onStreamTransportConnected();
 }
 
 void Nax5SessionController::onStreamTransportConnected()
@@ -810,6 +821,7 @@ void Nax5SessionController::onStreamFirstFrame()
         return;
     stream_first_frame_seen = true;
     stream_was_connected = true;
+    qCInfo(nax5SessionLog) << "first decoded frame, posting connected";
     setState(nax5SessionReduce(session_state, Nax5GameSessionActionStreamConnected));
     setStatusText(QStringLiteral("Игра"));
     if (isOperatorTest())
@@ -829,7 +841,7 @@ void Nax5SessionController::onConnectedFinished(quint64 request_id, const Nax5Se
     connected_request_id = 0;
     if (logoutIfUnauthenticated(result.error))
         return;
-    if (result.error == Nax5SessionErrorNetworkError && !shutdown_started && session_state == Nax5GameSessionStateActive && auth && !session_id.isEmpty())
+    if (nax5ShouldRetryMarkConnected(session_state, shutdown_started, result.error) && auth && !session_id.isEmpty())
         connected_request_id = api->markConnected(auth->sessionToken(), session_id);
 }
 

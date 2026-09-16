@@ -52,7 +52,7 @@ LAUNCHER_EXE="$OUT/NAX5.exe"
 LAUNCHER_ZIP="$OUT/NAX5-windows.zip"
 INSTALLER="$OUT/NAX5-windows-installer.exe"
 EXE="$BUILD/gui/chiaki.exe"
-RELEASE_TAG="alpha-0.5-build-2"
+RELEASE_TAG="alpha-0.5-build-3"
 
 cd "$ROOT"
 
@@ -153,7 +153,7 @@ cp -f "$ROOT/scripts/release/README-USER-alpha05.txt" "$USER_DIR/README-USER.txt
   echo "launcher: ${LAUNCHER_EXE##*/}"
   echo "installer: ${INSTALLER##*/}"
   echo "unit tests: nax5-auth-unit, nax5-session-unit, nax5-connection-unit passed"
-  echo "features: login, reserve, auto Remote Play, process log, client-reports, session hardening"
+  echo "features: login, reserve, auto Remote Play, process log, client-reports, session hardening, first-frame replay tracking"
 } > "$USER_DIR/BUILD-INFO.txt"
 
 if find "$USER_DIR" -iname '*.cmd' | grep -q .; then

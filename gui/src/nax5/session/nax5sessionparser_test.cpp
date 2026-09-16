@@ -295,11 +295,21 @@ static void test_product_operator_parity()
 static void test_connected_flag_resets_on_new_play()
 {
     bool stream_was_connected = true;
+    bool stream_first_frame_seen = true;
     expect(nax5StreamQuitMutation(stream_was_connected, false) == Nax5TerminalMutationEnd, "connected play ends");
     stream_was_connected = nax5StreamConnectedOnNewGeneration();
+    stream_first_frame_seen = nax5StreamFirstFrameSeenOnNewGeneration();
     expect(!stream_was_connected, "new play generation starts never-connected");
+    expect(!stream_first_frame_seen, "new play generation must accept the next first frame");
     expect(nax5StreamQuitMutation(stream_was_connected, false) == Nax5TerminalMutationFail, "handshake timeout after prior success is fail");
     expect(nax5StreamQuitMutation(stream_was_connected, false) != Nax5TerminalMutationEnd, "handshake timeout is not end");
+    quint64 connected_request_id = 5;
+    connected_request_id = 0;
+    expect(!nax5AcceptAsync(2, 2, connected_request_id, 5), "new play drops stale connected reply");
+    expect(nax5ShouldRetryMarkConnected(Nax5GameSessionStateActive, false, Nax5SessionErrorNetworkError), "retry connected while active");
+    expect(nax5ShouldRetryMarkConnected(Nax5GameSessionStateConnecting, false, Nax5SessionErrorNetworkError), "retry connected while still connecting");
+    expect(!nax5ShouldRetryMarkConnected(Nax5GameSessionStateActive, true, Nax5SessionErrorNetworkError), "no connected retry during shutdown");
+    expect(!nax5ShouldRetryMarkConnected(Nax5GameSessionStateActive, false, Nax5SessionErrorNotFound), "expired session is not retried");
 }
 
 static void test_product_wakeup_from_material_once()

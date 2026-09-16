@@ -117,6 +117,18 @@ bool nax5StreamConnectedOnNewGeneration()
     return false;
 }
 
+bool nax5StreamFirstFrameSeenOnNewGeneration()
+{
+    return false;
+}
+
+bool nax5ShouldRetryMarkConnected(Nax5GameSessionState state, bool shutdown_started, Nax5SessionError error)
+{
+    if (shutdown_started || error != Nax5SessionErrorNetworkError)
+        return false;
+    return state == Nax5GameSessionStateActive || state == Nax5GameSessionStateConnecting;
+}
+
 bool nax5ProductShouldWakeupBeforeCreateSession()
 {
     return true;

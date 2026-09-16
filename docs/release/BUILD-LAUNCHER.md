@@ -90,7 +90,7 @@ Expand-Archive artifacts\alpha-0.5\NAX5-windows.zip -DestinationPath $env:TEMP\n
 ## Публикация на GitHub Releases
 
 1. Обновите `RELEASES.md` в workspace `C:\astro`.
-2. Создайте тег, например `alpha-0.5-build-2`.
+2. Создайте тег, например `alpha-0.5-build-3`.
 3. Загрузите assets:
    - `NAX5-windows.zip` (обязательно)
    - `NAX5-windows-installer.zip` (то же содержимое с chiaki-ng именем)
