@@ -36,8 +36,11 @@ fi
 SHA="$("$GIT" -C "$ROOT" rev-parse HEAD)"
 BRANCH="$("$GIT" -C "$ROOT" rev-parse --abbrev-ref HEAD)"
 DESCRIBE="$("$GIT" -C "$ROOT" describe --tags --always --dirty)"
-mapfile -t DIRTY < <("$GIT" -C "$ROOT" status --porcelain")
-DIRTY_COUNT="${#DIRTY[@]}"
+DIRTY_LINES="$("$GIT" -C "$ROOT" status --porcelain)"
+DIRTY_COUNT=0
+if [[ -n "$DIRTY_LINES" ]]; then
+  DIRTY_COUNT="$(printf '%s\n' "$DIRTY_LINES" | sed -n '$=')"
+fi
 
 echo "HEAD=$SHA"
 echo "DESCRIBE=$DESCRIBE"
@@ -46,7 +49,7 @@ echo "DIRTY_COUNT=$DIRTY_COUNT"
 
 if [[ "$DIRTY_COUNT" -ne 0 ]]; then
   echo "Refusing to build a release tag with a dirty worktree:" >&2
-  printf '  %s\n' "${DIRTY[@]}" >&2
+  printf '%s\n' "$DIRTY_LINES" >&2
   exit 1
 fi
 
@@ -98,7 +101,7 @@ bash "$ROOT/scripts/deploy-windows-msys2.sh" \
 printf '%s\n' '[Paths]' 'Prefix = .' > "$STAGE/qt.conf"
 
 BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-EXE_SIZE="$(wc -c < "$STAGE/chiaki.exe" | tr -d "[:space:]")"
+EXE_SIZE="$(wc -c < "$STAGE/chiaki.exe" | tr -d '[:space:]')"
 
 cp -a "$STAGE" "$USER_DIR"
 rm -f "$USER_DIR"/start-nax5-*.cmd
