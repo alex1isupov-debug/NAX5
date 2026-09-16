@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and package NAX5 Alpha 0.5 production user installer (+ portable ZIP for release).
+# Build and package NAX5 Alpha 0.5 production launcher (single self-extracting exe in zip).
 # Run from MSYS2 MINGW64.
 set -euo pipefail
 
@@ -21,9 +21,11 @@ if [[ -z "${GIT:-}" ]]; then
   GIT="/c/Program Files/Git/cmd/git.exe"
 fi
 STAGE="$OUT/portable/_stage"
-USER_DIR="$OUT/portable/NAX5-user"
-USER_ZIP="$OUT/NAX5-Alpha-0.5-Windows-x64.zip"
-INSTALLER="$OUT/NAX5-windows-installer.exe"
+USER_DIR="$OUT/portable/NAX5"
+PORTABLE_ZIP="$OUT/NAX5-windows-portable.zip"
+LEGACY_PORTABLE_ZIP="$OUT/NAX5-Alpha-0.5-Windows-x64.zip"
+LAUNCHER_EXE="$OUT/NAX5.exe"
+LAUNCHER_ZIP="$OUT/NAX5-windows.zip"
 EXE="$BUILD/gui/chiaki.exe"
 RELEASE_TAG="alpha-0.5-build-2"
 
@@ -88,7 +90,7 @@ if [[ "$ORIG" != "chiaki.exe" ]]; then
   exit 1
 fi
 
-rm -rf "$STAGE" "$USER_DIR" "$USER_ZIP"
+rm -rf "$STAGE" "$USER_DIR"
 mkdir -p "$STAGE" "$OUT/portable"
 
 bash "$ROOT/scripts/deploy-windows-msys2.sh" \
@@ -122,8 +124,8 @@ cp -f "$ROOT/scripts/release/README-USER-alpha05.txt" "$USER_DIR/README-USER.txt
   echo "configuration: Release"
   echo "chiaki.exe bytes: ${EXE_SIZE}"
   echo "default API: https://cloudgta6.com"
-  echo "launch: chiaki.exe"
-  echo "installer: ${INSTALLER##*/}"
+  echo "launch: chiaki.exe (via NAX5.exe self-extractor)"
+  echo "launcher: ${LAUNCHER_EXE##*/}"
   echo "unit tests: nax5-auth-unit, nax5-session-unit, nax5-connection-unit passed"
   echo "features: login, reserve, auto Remote Play, process log, client-reports, session hardening"
 } > "$USER_DIR/BUILD-INFO.txt"
@@ -133,46 +135,81 @@ if find "$USER_DIR" -iname '*.cmd' | grep -q .; then
   exit 1
 fi
 
-cd "$OUT/portable"
-rm -f "$USER_ZIP"
-zip -r -9 "$USER_ZIP" NAX5-user
-unzip -tq "$USER_ZIP"
-
-SHA256="$(sha256sum "$USER_ZIP" | awk '{print $1}')"
-echo "USER_ZIP=$USER_ZIP"
-echo "SHA256=$SHA256"
-ls -l "$USER_ZIP"
-
-ISCC="${ISCC:-}"
-if [[ -z "$ISCC" ]]; then
-  iscc_x86='/c/Program Files (x86)/Inno Setup 6/ISCC.exe'
-  iscc_pf='/c/Program Files/Inno Setup 6/ISCC.exe'
-  iscc_user="/c/Users/${USERNAME}/AppData/Local/Programs/Inno Setup 6/ISCC.exe"
-  for candidate in "$iscc_x86" "$iscc_pf" "$iscc_user"
-  do
-    if [[ -f "$candidate" ]]; then
-      ISCC="$candidate"
-      break
-    fi
-  done
+if ! compgen -G "$USER_DIR/avutil-*.dll" > /dev/null; then
+  echo "Portable bundle is missing avutil-*.dll" >&2
+  exit 1
 fi
-
-if [[ -z "$ISCC" ]]; then
-  echo "Inno Setup 6 ISCC.exe is required to build NAX5-windows-installer.exe" >&2
-  echo "Install from https://jrsoftware.org/isinfo.php and re-run this script." >&2
+if ! compgen -G "$USER_DIR/avcodec-*.dll" > /dev/null; then
+  echo "Portable bundle is missing avcodec-*.dll" >&2
   exit 1
 fi
 
-rm -f "$INSTALLER"
-"$ISCC" \
-  "/DMyAppPath=$(cygpath -w "$USER_DIR")" \
-  "/DMyOutputDir=$(cygpath -w "$OUT")" \
-  "/DMyOutputBase=NAX5-windows-installer" \
-  "$(cygpath -w "$ROOT/scripts/nax5-windows-user.iss")"
-test -f "$INSTALLER"
-INSTALLER_SIZE="$(wc -c < "$INSTALLER" | tr -d "[:space:]")"
-echo "INSTALLER=$INSTALLER"
-echo "INSTALLER_BYTES=$INSTALLER_SIZE"
-ls -l "$INSTALLER"
+cd "$OUT/portable"
+rm -f "$PORTABLE_ZIP" "$LEGACY_PORTABLE_ZIP"
+zip -r -9 "$PORTABLE_ZIP" NAX5
+unzip -tq "$PORTABLE_ZIP"
+cp -f "$PORTABLE_ZIP" "$LEGACY_PORTABLE_ZIP"
+
+SHA256="$(sha256sum "$PORTABLE_ZIP" | awk '{print $1}')"
+echo "PORTABLE_ZIP=$PORTABLE_ZIP"
+echo "PORTABLE_SHA256=$SHA256"
+ls -l "$PORTABLE_ZIP"
+
+if ! command -v 7z >/dev/null; then
+  echo "p7zip is required to build NAX5.exe (pacman -S p7zip)" >&2
+  exit 1
+fi
+
+SFX_MODULE=""
+for candidate in \
+  /usr/lib/p7zip/7zSD.sfx \
+  /mingw64/lib/p7zip/7zSD.sfx \
+  "/c/Program Files/7-Zip/7zSD.sfx" \
+  "/c/Program Files (x86)/7-Zip/7zSD.sfx"
+do
+  if [[ -f "$candidate" ]]; then
+    SFX_MODULE="$candidate"
+    break
+  fi
+done
+
+if [[ -z "$SFX_MODULE" ]]; then
+  echo "7zSD.sfx not found. Install p7zip in MSYS2 or 7-Zip on Windows." >&2
+  exit 1
+fi
+
+SFX_CONFIG="$OUT/sfx-config.txt"
+SFX_ARCHIVE="$OUT/nax5-portable.7z"
+cat > "$SFX_CONFIG" << 'EOF'
+;!@Install@!UTF-8!
+Title="NAX5"
+GUIMode="2"
+OverwriteMode="2"
+RunProgram="chiaki.exe"
+;!@InstallEnd@!
+EOF
+
+rm -f "$SFX_ARCHIVE" "$LAUNCHER_EXE" "$LAUNCHER_ZIP"
+(
+  cd "$USER_DIR"
+  7z a -mx=9 -t7z "$SFX_ARCHIVE" . >/dev/null
+)
+cat "$SFX_MODULE" "$SFX_CONFIG" "$SFX_ARCHIVE" > "$LAUNCHER_EXE"
+rm -f "$SFX_CONFIG" "$SFX_ARCHIVE"
+
+LAUNCHER_SIZE="$(wc -c < "$LAUNCHER_EXE" | tr -d '[:space:]')"
+echo "LAUNCHER_EXE=$LAUNCHER_EXE"
+echo "LAUNCHER_BYTES=$LAUNCHER_SIZE"
+ls -l "$LAUNCHER_EXE"
+
+(
+  cd "$OUT"
+  zip -9 "$(basename "$LAUNCHER_ZIP")" "$(basename "$LAUNCHER_EXE")"
+)
+unzip -tq "$LAUNCHER_ZIP"
+LAUNCHER_ZIP_SHA256="$(sha256sum "$LAUNCHER_ZIP" | awk '{print $1}')"
+echo "LAUNCHER_ZIP=$LAUNCHER_ZIP"
+echo "LAUNCHER_ZIP_SHA256=$LAUNCHER_ZIP_SHA256"
+ls -l "$LAUNCHER_ZIP"
 
 echo "DONE"

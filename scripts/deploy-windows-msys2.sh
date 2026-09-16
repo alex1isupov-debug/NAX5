@@ -70,6 +70,7 @@ enqueue_dependency() {
     local file_name
 
     [[ -n "$dependency" ]] || return 0
+    [[ -f "$dependency" ]] || return 0
 
     file_name="${dependency##*/}"
     if [[ ! -e "$output_dir/$file_name" ]]; then
@@ -80,6 +81,37 @@ enqueue_dependency() {
     if [[ -z "${queued_paths["$dependency"]+x}" ]]; then
         queue+=("$dependency")
         queued_paths["$dependency"]=1
+    fi
+}
+
+copy_msys_bin() {
+    local pattern="$1"
+    local dll
+
+    shopt -s nullglob
+    local matches=("$msys_prefix/bin/$pattern")
+    shopt -u nullglob
+
+    if [[ ${#matches[@]} -eq 0 ]]; then
+        echo "warning: no files matched $msys_prefix/bin/$pattern" >&2
+        return 0
+    fi
+
+    for dll in "${matches[@]}"; do
+        enqueue_dependency "$dll"
+    done
+}
+
+require_msys_bin() {
+    local pattern="$1"
+
+    shopt -s nullglob
+    local matches=("$msys_prefix/bin/$pattern")
+    shopt -u nullglob
+
+    if [[ ${#matches[@]} -eq 0 ]]; then
+        echo "error: required runtime missing in $msys_prefix/bin/$pattern" >&2
+        exit 1
     fi
 }
 
@@ -96,6 +128,23 @@ while [[ ${#queue[@]} -gt 0 ]]; do
         enqueue_dependency "$dependency"
     done < <(extract_dependencies "$current")
 done
+
+# chiaki-ng explicitly bundles FFmpeg/SDL/libplacebo DLLs; ldd alone misses
+# runtime-loaded codecs (avutil-59.dll, avcodec-*.dll, etc.).
+require_msys_bin 'avutil-*.dll'
+require_msys_bin 'avcodec-*.dll'
+require_msys_bin 'avformat-*.dll'
+require_msys_bin 'swresample-*.dll'
+copy_msys_bin 'avutil-*.dll'
+copy_msys_bin 'avcodec-*.dll'
+copy_msys_bin 'avformat-*.dll'
+copy_msys_bin 'swresample-*.dll'
+copy_msys_bin 'swscale-*.dll'
+copy_msys_bin 'SDL2.dll'
+copy_msys_bin 'SDL3.dll'
+copy_msys_bin 'libplacebo-*.dll'
+copy_msys_bin 'shaderc_shared.dll'
+copy_msys_bin 'spirv-cross-c-shared.dll'
 
 windeployqt6.exe --no-translations --qmldir="$qml_dir" "$output_dir/$(basename "$exe_path")"
 
@@ -133,3 +182,11 @@ cp "$source_root/COPYING" "$output_dir/COPYING"
 cp -a "$source_root/LICENSES" "$output_dir/LICENSES"
 cp "$source_root/UPSTREAM.md" "$output_dir/UPSTREAM.md"
 cp "$source_root/THIRD-PARTY-NOTICES.md" "$output_dir/THIRD-PARTY-NOTICES.md"
+
+shopt -s nullglob
+required_runtime=( "$output_dir"/avutil-*.dll "$output_dir"/avcodec-*.dll "$output_dir"/avformat-*.dll "$output_dir"/swresample-*.dll )
+shopt -u nullglob
+if [[ ${#required_runtime[@]} -lt 4 ]]; then
+    echo "error: portable bundle is missing FFmpeg runtime DLLs" >&2
+    exit 1
+fi

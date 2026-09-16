@@ -13,7 +13,7 @@ fi
 if [[ "${SKIP_PACMAN:-0}" != "1" ]]; then
   pacman -Syu --noconfirm
   pacman -S --needed --noconfirm \
-  git make unzip zip \
+  git make unzip zip p7zip \
   mingw-w64-x86_64-toolchain \
   mingw-w64-x86_64-cmake \
   mingw-w64-x86_64-ninja \
