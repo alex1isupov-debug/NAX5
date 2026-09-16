@@ -107,15 +107,21 @@ Manual product checks: [docs/acceptance/ALPHA05-USER-TEST.md](docs/acceptance/AL
 
 ## Packaging
 
-Production user ZIP:
+Full guide: [docs/release/BUILD-LAUNCHER.md](docs/release/BUILD-LAUNCHER.md)
 
 ```bash
+# one-time
+bash scripts/release/setup-msys2-build-env.sh
+
 # MSYS2 MINGW64, clean committed tree
 bash scripts/release/build-alpha05-user-pack.sh
 ```
 
-Output: `artifacts/alpha-0.5/NAX5-Alpha-0.5-Windows-x64.zip`
+Output:
 
-Optional Inno installer when ISCC is installed. Operator/local `.cmd` helpers are **not** included in the user pack.
+- `artifacts/alpha-0.5/NAX5-windows-installer.exe` (primary user download)
+- `artifacts/alpha-0.5/NAX5-Alpha-0.5-Windows-x64.zip` (portable fallback for release hosting)
+
+Inno Setup 6 (`ISCC.exe`) is required. Operator/local `.cmd` helpers are **not** included in the user pack.
 
 Record releases in workspace `RELEASES.md` and publish assets to GitHub Releases.

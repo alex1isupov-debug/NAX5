@@ -27,11 +27,12 @@ Item {
             width: Math.min(parent.width - 80, 460)
             spacing: 18
 
-            Label {
+            Image {
                 Layout.alignment: Qt.AlignHCenter
-                text: "NAX5"
-                font.pixelSize: 42
-                font.bold: true
+                Layout.preferredWidth: 220
+                Layout.preferredHeight: 52
+                fillMode: Image.PreserveAspectFit
+                source: "qrc:/icons/nax5-logo.svg"
             }
 
             Label {

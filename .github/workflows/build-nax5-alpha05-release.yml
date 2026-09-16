@@ -1,0 +1,105 @@
+name: Build NAX5 Alpha 0.5 release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - task4-auto-remote-play
+    paths:
+      - 'gui/**'
+      - 'lib/**'
+      - 'scripts/release/**'
+      - 'scripts/nax5-windows-user.iss'
+      - 'scripts/deploy-windows-msys2.sh'
+      - 'CMakeLists.txt'
+      - '.github/workflows/build-nax5-alpha05-release.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Disable autocrlf
+        shell: pwsh
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw64
+          update: true
+          install: git make unzip zip
+          pacboy: >-
+            cc:p
+            cmake:p
+            curl:p
+            fast_float:p
+            fftw:p
+            hidapi:p
+            json-c:p
+            libevent:p
+            lcms2:p
+            libdovi:p
+            meson:p
+            miniupnpc:p
+            gcc:p
+            nasm:p
+            ninja:p
+            openssl:p
+            opus:p
+            pkgconf:p
+            protobuf:p
+            python:p
+            python-psutil:p
+            python-glad:p
+            python-jinja:p
+            python-pip:p
+            qt6-base:p
+            qt6-declarative:p
+            qt6-svg:p
+            shaderc:p
+            speexdsp:p
+            spirv-cross:p
+            vulkan:p
+            vulkan-headers:p
+
+      - name: Install python protobuf
+        run: pip install protobuf
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Prepare MSYS2 media stack
+        run: |
+          SKIP_PACMAN=1 bash scripts/release/setup-msys2-build-env.sh
+
+      - name: Build Alpha 0.5 user pack
+        run: bash scripts/release/build-alpha05-user-pack.sh
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: NAX5-windows-installer
+          path: artifacts/alpha-0.5/NAX5-windows-installer.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload portable zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: NAX5-Alpha-0.5-Windows-x64
+          path: artifacts/alpha-0.5/NAX5-Alpha-0.5-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14

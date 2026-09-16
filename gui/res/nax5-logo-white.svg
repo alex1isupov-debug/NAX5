@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 120" role="img" aria-label="NAX5">
+  <defs>
+    <linearGradient id="nax5-white" x1="0" y1="0" x2="120" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" />
+      <stop offset="1" stop-color="#d8ecff" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="112" height="112" rx="24" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="2" />
+  <path d="M28 24h22l18 20 18-20h22L86 60l28 32H98L74 78 46 108H18l30-34L28 24Z" fill="url(#nax5-white)" opacity="0.95" />
+  <text x="150" y="82" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="72" font-weight="700" letter-spacing="4">NAX5</text>
+</svg>

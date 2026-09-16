@@ -11,7 +11,7 @@
   #define MyOutputDir "."
 #endif
 #ifndef MyOutputBase
-  #define MyOutputBase "NAX5-Windows-x64-setup"
+  #define MyOutputBase "NAX5-windows-installer"
 #endif
 
 #define MyAppName "NAX5"
@@ -40,7 +40,7 @@ DisableProgramGroupPage=yes
 DisableDirPage=no
 AllowNoIcons=yes
 LicenseFile=..\LICENSES\AGPL-3.0-only-OpenSSL.txt
-SetupIconFile=..\gui\chiaking.ico
+SetupIconFile=..\gui\nax5.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 OutputBaseFilename={#MyOutputBase}
 OutputDir={#MyOutputDir}

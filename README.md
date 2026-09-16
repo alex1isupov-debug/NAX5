@@ -17,7 +17,7 @@ Alpha 0.5 is the first **production user** build intended for closed testers:
 - native login with the same email/password as [cloudgta6.com](https://www.cloudgta6.com/register/);
 - Play → backend reserve → automatic Remote Play (no manual PS5 registration);
 - process logging and optional client-reports upload to the control plane;
-- portable ZIP `NAX5-Alpha-0.5-Windows-x64.zip` (executable `chiaki.exe`).
+- Windows installer `NAX5-windows-installer.exe` (Start menu shortcut to `chiaki.exe`).
 
 Production API: `https://cloudgta6.com`. Play requires verified email and **`ACTIVE`** access status.
 
@@ -25,14 +25,15 @@ For local development only, set `NAX5_API_BASE_URL=http://127.0.0.1:8000` and us
 
 ## Install and test
 
-1. Download `NAX5-Alpha-0.5-Windows-x64.zip` from GitHub Releases.
-2. Extract the complete ZIP to a new folder.
-3. Run `chiaki.exe`.
-4. Log in, press **Играть**, confirm video/audio/controller.
+1. Download `NAX5-windows-installer.exe` from GitHub Releases.
+2. Run the installer and launch NAX5 from the Start menu.
+3. Log in, press **Играть**, confirm video/audio/controller.
 
 This build is unsigned. Windows SmartScreen may show a reputation warning. Do not disable Microsoft Defender; stop if Defender reports an actual threat.
 
 See [docs/acceptance/ALPHA05-USER-TEST.md](docs/acceptance/ALPHA05-USER-TEST.md) for the full checklist.
+
+Build the launcher: [docs/release/BUILD-LAUNCHER.md](docs/release/BUILD-LAUNCHER.md).
 
 ## Earlier alphas
 

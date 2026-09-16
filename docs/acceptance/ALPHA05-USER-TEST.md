@@ -2,11 +2,11 @@
 
 Production user pack for Windows x64. Default API: `https://cloudgta6.com`.
 
-Build with `scripts/release/build-alpha05-user-pack.sh`. Artifact: `artifacts/alpha-0.5/NAX5-Alpha-0.5-Windows-x64.zip`.
+Build with `scripts/release/build-alpha05-user-pack.sh`. Primary artifact: `artifacts/alpha-0.5/NAX5-windows-installer.exe`.
 
 ## Install
 
-1. Download `NAX5-Alpha-0.5-Windows-x64.zip` from the GitHub release (`alpha-0.5-build-1`).
+1. Download `NAX5-windows-installer.exe` from the GitHub release (`alpha-0.5-build-1`).
 2. Extract the **entire** archive to a new folder.
 3. Run `chiaki.exe` from that folder. Do not set `NAX5_API_BASE_URL` or `NAX5_OPERATOR_MODE`.
 4. SmartScreen may warn on the unsigned build — expected. Stop if Defender reports a real threat.

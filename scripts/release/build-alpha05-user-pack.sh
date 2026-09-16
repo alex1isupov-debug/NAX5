@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and package NAX5 Alpha 0.5 production user ZIP (+ optional Inno installer).
+# Build and package NAX5 Alpha 0.5 production user installer (+ portable ZIP for release).
 # Run from MSYS2 MINGW64.
 set -euo pipefail
 
@@ -21,10 +21,15 @@ GIT="${GIT:-/c/Program Files/Git/cmd/git.exe}"
 STAGE="$OUT/portable/_stage"
 USER_DIR="$OUT/portable/NAX5-user"
 USER_ZIP="$OUT/NAX5-Alpha-0.5-Windows-x64.zip"
+INSTALLER="$OUT/NAX5-windows-installer.exe"
 EXE="$BUILD/gui/chiaki.exe"
 RELEASE_TAG="alpha-0.5-build-1"
 
 cd "$ROOT"
+
+if [[ ! -f "$ROOT/gui/nax5.ico" ]]; then
+  /mingw64/bin/python3 "$ROOT/scripts/branding/generate-nax5-ico.py"
+fi
 
 SHA="$("$GIT" -C "$ROOT" rev-parse HEAD)"
 BRANCH="$("$GIT" -C "$ROOT" rev-parse --abbrev-ref HEAD)"
@@ -107,6 +112,7 @@ cp -f "$ROOT/scripts/release/README-USER-alpha05.txt" "$USER_DIR/README-USER.txt
   echo "chiaki.exe bytes: ${EXE_SIZE}"
   echo "default API: https://cloudgta6.com"
   echo "launch: chiaki.exe"
+  echo "installer: ${INSTALLER##*/}"
   echo "unit tests: nax5-auth-unit, nax5-session-unit, nax5-connection-unit passed"
   echo "features: login, reserve, auto Remote Play, process log, client-reports, session hardening"
 } > "$USER_DIR/BUILD-INFO.txt"
@@ -135,16 +141,22 @@ elif [[ -f "/c/Users/${USERNAME}/AppData/Local/Programs/Inno Setup 6/ISCC.exe" ]
   ISCC="/c/Users/${USERNAME}/AppData/Local/Programs/Inno Setup 6/ISCC.exe"
 fi
 
-INSTALLER="$OUT/NAX5-Alpha-0.5-Windows-x64-setup.exe"
-if [[ -n "$ISCC" ]]; then
-  rm -f "$INSTALLER"
-  "$ISCC" \
-    "/DMyAppPath=$(cygpath -w "$USER_DIR")" \
-    "/DMyOutputDir=$(cygpath -w "$OUT")" \
-    "/DMyOutputBase=NAX5-Alpha-0.5-Windows-x64-setup" \
-    "$(cygpath -w "$ROOT/scripts/nax5-windows-user.iss")"
-  test -f "$INSTALLER"
-  echo "INSTALLER=$INSTALLER"
+if [[ -z "$ISCC" ]]; then
+  echo "Inno Setup 6 (ISCC.exe) is required to build NAX5-windows-installer.exe" >&2
+  echo "Install from https://jrsoftware.org/isinfo.php and re-run this script." >&2
+  exit 1
 fi
+
+rm -f "$INSTALLER"
+"$ISCC" \
+  "/DMyAppPath=$(cygpath -w "$USER_DIR")" \
+  "/DMyOutputDir=$(cygpath -w "$OUT")" \
+  "/DMyOutputBase=NAX5-windows-installer" \
+  "$(cygpath -w "$ROOT/scripts/nax5-windows-user.iss")"
+test -f "$INSTALLER"
+INSTALLER_SIZE="$(wc -c < "$INSTALLER" | tr -d "[:space:]")"
+echo "INSTALLER=$INSTALLER"
+echo "INSTALLER_BYTES=$INSTALLER_SIZE"
+ls -l "$INSTALLER"
 
 echo "DONE"

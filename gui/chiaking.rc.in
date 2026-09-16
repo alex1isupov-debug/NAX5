@@ -21,11 +21,11 @@ BEGIN
     BEGIN
         BLOCK "080904b0"
         BEGIN
-            VALUE "Comments", "NAX5 Alpha 0.2, based on chiaki-ng"
-            VALUE "CompanyName", "Stret Pea"
+            VALUE "Comments", "NAX5 Alpha 0.5, based on chiaki-ng"
+            VALUE "CompanyName", "NAX5"
             VALUE "FileDescription", "NAX5 Remote Play Client"
             VALUE "FileVersion", VER_FILEVERSION_STR
-            VALUE "InternalName", "chiaki-ng"
+            VALUE "InternalName", "nax5"
             VALUE "LegalCopyright", "AGPLv3 Stret Pea 2022"
             VALUE "OriginalFilename", "chiaki.exe"
             VALUE "ProductName", "NAX5"
@@ -37,4 +37,4 @@ BEGIN
         VALUE "Translation", 0x809, 1200
     END
 END
-IDI_ICON1 ICON DISCARDABLE "chiaking.ico"
+IDI_ICON1 ICON DISCARDABLE "nax5.ico"

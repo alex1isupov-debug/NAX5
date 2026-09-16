@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="NAX5">
+  <defs>
+    <linearGradient id="nax5-blue" x1="9" y1="8" x2="55" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#19d4ff" />
+      <stop offset=".48" stop-color="#1478ff" />
+      <stop offset="1" stop-color="#1249e8" />
+    </linearGradient>
+    <filter id="nax5-glow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="2.2" result="blur" />
+      <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="#070b18" />
+  <path d="M15 14h12l10 11 10-11h12L43 32l16 18H47L37 39 26 50H14l17-18L15 14Z" fill="url(#nax5-blue)" filter="url(#nax5-glow)" />
+  <path d="M21 14h6l10 11 10-11h6L37 31 21 14Z" fill="#7ceeff" opacity=".8" />
+</svg>
