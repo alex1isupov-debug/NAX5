@@ -84,6 +84,7 @@ jobs:
       - name: Prepare MSYS2 media stack
         run: |
           SKIP_PACMAN=1 bash scripts/release/setup-msys2-build-env.sh
+          rm -rf SDL3-* ffmpeg-n7.1-latest-win64-gpl-shared-7.1*
 
       - name: Build Alpha 0.5 user pack
         env:

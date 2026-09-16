@@ -71,4 +71,9 @@ if [[ ! -f /mingw64/lib/pkgconfig/sdl2.pc ]] || grep -q sdl2-compat /mingw64/lib
 fi
 
 /mingw64/bin/python3 -c 'import google.protobuf'
+
+rm -rf "$ROOT/SDL3-"*.tar.gz "$ROOT/SDL3-"*/ \
+  "$ROOT/ffmpeg-n7.1-latest-win64-gpl-shared-7.1.zip" \
+  "$ROOT/ffmpeg-n7.1-latest-win64-gpl-shared-7.1"
+
 echo "MSYS2 build environment is ready."
