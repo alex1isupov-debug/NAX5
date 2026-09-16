@@ -144,7 +144,7 @@ fi
   zip -9 "$(basename "$INSTALLER_ZIP")" "$(basename "$INSTALLER")"
 )
 
-python3 - "$LAUNCHER_ZIP" "$INSTALLER_ZIP" <<'PY'
+python3 - "$(cygpath -w "$LAUNCHER_ZIP")" "$(cygpath -w "$INSTALLER_ZIP")" <<'PY'
 import sys
 import zipfile
 
