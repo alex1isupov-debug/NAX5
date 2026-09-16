@@ -17,13 +17,15 @@ fi
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BUILD="${NAX5_BUILD_DIR:-$ROOT/build-alpha05}"
 OUT="${NAX5_RELEASE_DIR:-$ROOT/artifacts/alpha-0.5}"
-GIT="${GIT:-/c/Program Files/Git/cmd/git.exe}"
+if [[ -z "${GIT:-}" ]]; then
+  GIT="/c/Program Files/Git/cmd/git.exe"
+fi
 STAGE="$OUT/portable/_stage"
 USER_DIR="$OUT/portable/NAX5-user"
 USER_ZIP="$OUT/NAX5-Alpha-0.5-Windows-x64.zip"
 INSTALLER="$OUT/NAX5-windows-installer.exe"
 EXE="$BUILD/gui/chiaki.exe"
-RELEASE_TAG="alpha-0.5-build-1"
+RELEASE_TAG="alpha-0.5-build-2"
 
 cd "$ROOT"
 
@@ -66,8 +68,14 @@ echo "unit tests passed"
 test -f "$EXE"
 
 EXE_WIN="$(cygpath -w "$EXE")"
-DESC="$(powershell.exe -NoProfile -Command "[System.Diagnostics.FileVersionInfo]::GetVersionInfo('$EXE_WIN').FileDescription" | tr -d '\r')"
-ORIG="$(powershell.exe -NoProfile -Command "[System.Diagnostics.FileVersionInfo]::GetVersionInfo('$EXE_WIN').OriginalFilename" | tr -d '\r')"
+DESC="$(
+  powershell.exe -NoProfile -Command "\$info=[System.Diagnostics.FileVersionInfo]::GetVersionInfo('${EXE_WIN}'); \$info.FileDescription" \
+    | tr -d '\r'
+)"
+ORIG="$(
+  powershell.exe -NoProfile -Command "\$info=[System.Diagnostics.FileVersionInfo]::GetVersionInfo('${EXE_WIN}'); \$info.OriginalFilename" \
+    | tr -d '\r'
+)"
 if [[ "$DESC" != "NAX5 Remote Play Client" ]]; then
   echo "Unexpected FileDescription: [$DESC]" >&2
   exit 1
@@ -134,12 +142,11 @@ ls -l "$USER_ZIP"
 
 ISCC="${ISCC:-}"
 if [[ -z "$ISCC" ]]; then
-  iscc_candidates=(
-    "/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
-    "/c/Program Files/Inno Setup 6/ISCC.exe"
-    "/c/Users/${USERNAME}/AppData/Local/Programs/Inno Setup 6/ISCC.exe"
-  )
-  for candidate in "${iscc_candidates[@]}"; do
+  iscc_x86='/c/Program Files (x86)/Inno Setup 6/ISCC.exe'
+  iscc_pf='/c/Program Files/Inno Setup 6/ISCC.exe'
+  iscc_user="/c/Users/${USERNAME}/AppData/Local/Programs/Inno Setup 6/ISCC.exe"
+  for candidate in "$iscc_x86" "$iscc_pf" "$iscc_user"
+  do
     if [[ -f "$candidate" ]]; then
       ISCC="$candidate"
       break
