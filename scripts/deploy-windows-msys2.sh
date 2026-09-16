@@ -89,24 +89,18 @@ copy_msys_bin() {
     local dll
 
     shopt -s nullglob
-    local matches=("$msys_prefix/bin/$pattern")
-    shopt -u nullglob
-
-    if [[ ${#matches[@]} -eq 0 ]]; then
-        echo "warning: no files matched $msys_prefix/bin/$pattern" >&2
-        return 0
-    fi
-
-    for dll in "${matches[@]}"; do
+    for dll in "$msys_prefix"/bin/$pattern; do
         enqueue_dependency "$dll"
     done
+    shopt -u nullglob
 }
 
 require_msys_bin() {
     local pattern="$1"
+    local matches=()
 
     shopt -s nullglob
-    local matches=("$msys_prefix/bin/$pattern")
+    matches=("$msys_prefix"/bin/$pattern)
     shopt -u nullglob
 
     if [[ ${#matches[@]} -eq 0 ]]; then
@@ -184,9 +178,10 @@ cp "$source_root/UPSTREAM.md" "$output_dir/UPSTREAM.md"
 cp "$source_root/THIRD-PARTY-NOTICES.md" "$output_dir/THIRD-PARTY-NOTICES.md"
 
 shopt -s nullglob
-required_runtime=( "$output_dir"/avutil-*.dll "$output_dir"/avcodec-*.dll "$output_dir"/avformat-*.dll "$output_dir"/swresample-*.dll )
+for pattern in avutil-*.dll avcodec-*.dll avformat-*.dll swresample-*.dll; do
+    if ! compgen -G "$output_dir/$pattern" > /dev/null; then
+        echo "error: portable bundle is missing $pattern" >&2
+        exit 1
+    fi
+done
 shopt -u nullglob
-if [[ ${#required_runtime[@]} -lt 4 ]]; then
-    echo "error: portable bundle is missing FFmpeg runtime DLLs" >&2
-    exit 1
-fi
