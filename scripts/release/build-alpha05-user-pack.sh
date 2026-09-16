@@ -187,6 +187,8 @@ fi
 SFX_MODULE=""
 for candidate in \
   /usr/lib/p7zip/7zSD.sfx \
+  /usr/lib/p7zip/7zS.sfx \
+  /usr/lib/p7zip/7zCon.sfx \
   /mingw64/lib/p7zip/7zSD.sfx \
   "/c/Program Files/7-Zip/7zSD.sfx" \
   "/c/Program Files (x86)/7-Zip/7zSD.sfx"
