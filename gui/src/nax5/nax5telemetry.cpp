@@ -7,15 +7,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
-#include <QSettings>
 #include <QUuid>
 
 namespace {
-
-QString settingsKey()
-{
-    return QStringLiteral("telemetry/installation_id");
-}
 
 QString clientVersion()
 {
@@ -41,17 +35,6 @@ QJsonObject installationObject()
 QVector<QJsonObject> g_pending_events;
 
 } // namespace
-
-QString nax5InstallationId()
-{
-    QSettings settings(Nax5Runtime::settingsOrganizationName(), Nax5Runtime::settingsApplicationName());
-    QString existing = settings.value(settingsKey()).toString();
-    if (!existing.isEmpty())
-        return existing;
-    const QString generated = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    settings.setValue(settingsKey(), generated);
-    return generated;
-}
 
 QByteArray nax5BuildClientEventBatch(const QString &event_type, const QString &session_public_id)
 {
