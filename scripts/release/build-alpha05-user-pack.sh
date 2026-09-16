@@ -8,6 +8,30 @@ export MSYSTEM=MINGW64
 export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig"
 export LDD_TIMEOUT=10
 
+resolve_powershell() {
+  local candidate
+  for candidate in \
+    "${POWERSHELL:-}" \
+    /c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe \
+    /c/Windows/SysWOW64/WindowsPowerShell/v1.0/powershell.exe \
+    powershell.exe
+  do
+    [[ -n "$candidate" ]] || continue
+    if command -v "$candidate" >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+    if [[ -f "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  echo "powershell.exe not found" >&2
+  return 1
+}
+
+POWERSHELL_BIN="$(resolve_powershell)"
+
 if ! /mingw64/bin/python3 -c 'import google.protobuf' >/dev/null 2>&1; then
   echo "Missing mingw-w64-x86_64-python-protobuf. Install with:" >&2
   echo "  pacman -S mingw-w64-x86_64-python-protobuf" >&2
@@ -74,11 +98,11 @@ test -f "$EXE"
 
 EXE_WIN="$(cygpath -w "$EXE")"
 DESC="$(
-  powershell.exe -NoProfile -Command "\$info=[System.Diagnostics.FileVersionInfo]::GetVersionInfo('${EXE_WIN}'); \$info.FileDescription" \
+  "$POWERSHELL_BIN" -NoProfile -Command "\$info=[System.Diagnostics.FileVersionInfo]::GetVersionInfo('${EXE_WIN}'); \$info.FileDescription" \
     | tr -d '\r'
 )"
 ORIG="$(
-  powershell.exe -NoProfile -Command "\$info=[System.Diagnostics.FileVersionInfo]::GetVersionInfo('${EXE_WIN}'); \$info.OriginalFilename" \
+  "$POWERSHELL_BIN" -NoProfile -Command "\$info=[System.Diagnostics.FileVersionInfo]::GetVersionInfo('${EXE_WIN}'); \$info.OriginalFilename" \
     | tr -d '\r'
 )"
 if [[ "$DESC" != "NAX5 Remote Play Client" ]]; then
