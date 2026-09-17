@@ -52,7 +52,7 @@ LAUNCHER_EXE="$OUT/NAX5.exe"
 LAUNCHER_ZIP="$OUT/NAX5-windows.zip"
 INSTALLER="$OUT/NAX5-windows-installer.exe"
 EXE="$BUILD/gui/chiaki.exe"
-RELEASE_TAG="alpha-0.5-build-4"
+RELEASE_TAG="alpha-0.5-build-5"
 
 cd "$ROOT"
 

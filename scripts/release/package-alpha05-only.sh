@@ -17,7 +17,7 @@ USER_DIR="$OUT/portable/NAX5"
 PORTABLE_ZIP="$OUT/NAX5-windows-portable.zip"
 LEGACY_PORTABLE_ZIP="$OUT/NAX5-Alpha-0.5-Windows-x64.zip"
 EXE="$BUILD/gui/chiaki.exe"
-RELEASE_TAG="alpha-0.5-build-4"
+RELEASE_TAG="alpha-0.5-build-5"
 
 test -f "$EXE"
 
