@@ -56,12 +56,6 @@ RELEASE_TAG="alpha-0.5-build-4"
 
 cd "$ROOT"
 
-if [[ -f "$ROOT/assets/branding/nax5-brand-sheet.jpg" ]]; then
-  /mingw64/bin/python3 "$ROOT/scripts/branding/import-nax5-logo.py"
-elif [[ ! -f "$ROOT/gui/nax5.ico" || ! -f "$ROOT/gui/res/nax5-logo.png" ]]; then
-  /mingw64/bin/python3 "$ROOT/scripts/branding/generate-nax5-ico.py"
-fi
-
 SHA="$("$GIT" -C "$ROOT" rev-parse HEAD)"
 BRANCH="$("$GIT" -C "$ROOT" rev-parse --abbrev-ref HEAD)"
 DESCRIBE="$("$GIT" -C "$ROOT" describe --tags --always --dirty)"
@@ -80,6 +74,12 @@ if [[ "$DIRTY_COUNT" -ne 0 ]]; then
   echo "Refusing to build a release tag with a dirty worktree:" >&2
   printf '%s\n' "$DIRTY_LINES" >&2
   exit 1
+fi
+
+if [[ -f "$ROOT/assets/branding/nax5-brand-sheet.jpg" ]]; then
+  /mingw64/bin/python3 "$ROOT/scripts/branding/import-nax5-logo.py"
+elif [[ ! -f "$ROOT/gui/nax5.ico" || ! -f "$ROOT/gui/res/nax5-logo.png" ]]; then
+  /mingw64/bin/python3 "$ROOT/scripts/branding/generate-nax5-ico.py"
 fi
 
 cmake -S "$ROOT" -B "$BUILD" -G Ninja \
