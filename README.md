@@ -1,57 +1,17 @@
 # NAX5
 
-NAX5 is a Windows client for remote access to a physical PlayStation 5 over the Internet.
+Клиент NAX5 для Windows: удалённая игра на физической PlayStation 5.
 
-Developer guide: [NAX5.md](NAX5.md). Acceptance tests: [docs/acceptance/ALPHA05-USER-TEST.md](docs/acceptance/ALPHA05-USER-TEST.md).
+## Скачать
 
-**Current release:** NAX5 Alpha 0.5 build 4 for Windows x64 (`alpha-0.5-build-4`)
+Актуальная версия — **Alpha 0.5 build 5** для Windows x64.
 
-**Remote Play engine:** chiaki-ng v1.10.0
+[Скачать NAX5-windows.zip](https://github.com/alex1isupov-debug/NAX5/releases/download/alpha-0.5-build-5/NAX5-windows.zip)
 
-[Download releases](https://github.com/alex1isupov-debug/NAX5/releases)
+Распакуйте архив и запустите `NAX5.exe`. Войдите с тем же email и паролем, что на [сайте NAX5](https://www.cloudgta6.com/), затем нажмите «Играть».
 
-## Alpha 0.5
+Не нужно добавлять PS5 вручную, указывать IP, PIN или токен PSN.
 
-Alpha 0.5 is the first **production user** build intended for closed testers:
+## Лицензия
 
-- native login with the same email/password as [cloudgta6.com](https://www.cloudgta6.com/register/);
-- Play → backend reserve → automatic Remote Play (no manual PS5 registration);
-- process logging, client-report upload, and privacy-safe client telemetry;
-- Windows installer: download `NAX5-windows.zip`, extract it, and run `NAX5.exe`.
-
-Production API: `https://cloudgta6.com`. Play requires verified email and **`ACTIVE`** access status.
-
-For local development only, set `NAX5_API_BASE_URL=http://127.0.0.1:8000` and use `scripts/nax5/start-nax5-local.cmd`. **Do not** set that variable in the production user pack.
-
-## Install and test
-
-1. Download [`NAX5-windows.zip`](https://github.com/alex1isupov-debug/NAX5/releases/download/alpha-0.5-build-4/NAX5-windows.zip) from release `alpha-0.5-build-4`.
-2. Extract the ZIP and run its single file, `NAX5.exe`.
-3. Complete setup, launch NAX5 from the Start menu, log in, then press **Играть**.
-
-The product connects through NAX5 automatically. Do not register a PS5, enter a PSN token, use a manual IP/PIN, configure port forwarding, or put the shared console to sleep.
-
-This build is unsigned. Windows SmartScreen may show a reputation warning. Do not disable Microsoft Defender; stop if Defender reports an actual threat.
-
-See [docs/acceptance/ALPHA05-USER-TEST.md](docs/acceptance/ALPHA05-USER-TEST.md) for the full checklist.
-
-Build the launcher: [docs/release/BUILD-LAUNCHER.md](docs/release/BUILD-LAUNCHER.md).
-
-## Earlier alphas
-
-Historical acceptance notes live under [docs/archive/acceptance/](docs/archive/acceptance/).
-
-| Version | Focus |
-| --- | --- |
-| 0.1 | Historical branding and registration experiment |
-| 0.2 | Native login |
-| 0.3 | Console reserve, no stream |
-| 0.4 | Auto Remote Play + operator provisioning |
-
-## Upstream and licensing
-
-NAX5 is a modified distribution of [streetpea/chiaki-ng](https://github.com/streetpea/chiaki-ng), based on tag `v1.10.0` at commit `0c4a45df0cae2af2ba2daef84e881850b07038a3`.
-
-See [UPSTREAM.md](UPSTREAM.md), [FORK-MAINTENANCE.md](FORK-MAINTENANCE.md), [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), [COPYING](COPYING), and [LICENSES](LICENSES).
-
-NAX5 is an independent project and is not affiliated with, endorsed by, sponsored by, or certified by Sony Interactive Entertainment Inc.
+NAX5 основан на [chiaki-ng](https://github.com/streetpea/chiaki-ng) v1.10.0. Условия и сторонние лицензии: [COPYING](COPYING), [LICENSES](LICENSES), [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
