@@ -4,7 +4,7 @@ NAX5 is a Windows client for remote access to a physical PlayStation 5 over the 
 
 Developer guide: [NAX5.md](NAX5.md). Acceptance tests: [docs/acceptance/ALPHA05-USER-TEST.md](docs/acceptance/ALPHA05-USER-TEST.md).
 
-**Current release:** NAX5 Alpha 0.5 for Windows x64 (branch `task4-auto-remote-play`)
+**Current release:** NAX5 Alpha 0.5 build 4 for Windows x64 (`alpha-0.5-build-4`)
 
 **Remote Play engine:** chiaki-ng v1.10.0
 
@@ -16,8 +16,8 @@ Alpha 0.5 is the first **production user** build intended for closed testers:
 
 - native login with the same email/password as [cloudgta6.com](https://www.cloudgta6.com/register/);
 - Play → backend reserve → automatic Remote Play (no manual PS5 registration);
-- process logging and optional client-reports upload to the control plane;
-- Windows installer `NAX5-windows-installer.exe` (Start menu shortcut to `chiaki.exe`).
+- process logging, client-report upload, and privacy-safe client telemetry;
+- Windows installer: download `NAX5-windows.zip`, extract it, and run `NAX5.exe`.
 
 Production API: `https://cloudgta6.com`. Play requires verified email and **`ACTIVE`** access status.
 
@@ -25,9 +25,11 @@ For local development only, set `NAX5_API_BASE_URL=http://127.0.0.1:8000` and us
 
 ## Install and test
 
-1. Download `NAX5-windows-installer.exe` from GitHub Releases.
-2. Run the installer and launch NAX5 from the Start menu.
-3. Log in, press **Играть**, confirm video/audio/controller.
+1. Download [`NAX5-windows.zip`](https://github.com/alex1isupov-debug/NAX5/releases/download/alpha-0.5-build-4/NAX5-windows.zip) from release `alpha-0.5-build-4`.
+2. Extract the ZIP and run its single file, `NAX5.exe`.
+3. Complete setup, launch NAX5 from the Start menu, log in, then press **Играть**.
+
+The product connects through NAX5 automatically. Do not register a PS5, enter a PSN token, use a manual IP/PIN, configure port forwarding, or put the shared console to sleep.
 
 This build is unsigned. Windows SmartScreen may show a reputation warning. Do not disable Microsoft Defender; stop if Defender reports an actual threat.
 
@@ -37,11 +39,11 @@ Build the launcher: [docs/release/BUILD-LAUNCHER.md](docs/release/BUILD-LAUNCHER
 
 ## Earlier alphas
 
-Historical acceptance notes live under [docs/acceptance/history/](docs/acceptance/history/).
+Historical acceptance notes live under [docs/archive/acceptance/](docs/archive/acceptance/).
 
 | Version | Focus |
 | --- | --- |
-| 0.1 | Branding + manual Chiaki registration only |
+| 0.1 | Historical branding and registration experiment |
 | 0.2 | Native login |
 | 0.3 | Console reserve, no stream |
 | 0.4 | Auto Remote Play + operator provisioning |

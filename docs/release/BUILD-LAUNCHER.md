@@ -9,8 +9,8 @@
 
 | Артефакт | Назначение |
 | --- | --- |
-| `artifacts/alpha-0.5/NAX5-windows.zip` | основная ссылка для пользователей (один `NAX5.exe` = Inno installer) |
-| `artifacts/alpha-0.5/NAX5-windows-installer.zip` | то же с именем `NAX5-windows-installer.exe` (как chiaki-ng) |
+| `artifacts/alpha-0.5/NAX5-windows.zip` | канонический пользовательский download: один `NAX5.exe` = Inno installer |
+| `artifacts/alpha-0.5/NAX5-windows-installer.zip` | совместимый alias, не рекламировать пользователям |
 | `artifacts/alpha-0.5/NAX5-windows-portable.zip` | отладочный portable zip (папка `NAX5/`) |
 | `artifacts/alpha-0.5/NAX5-Alpha-0.5-Windows-x64.zip` | legacy alias portable zip |
 
@@ -57,8 +57,8 @@ bash scripts/release/package-alpha05-only.sh
 Скрипт:
 
 1. проверяет, что worktree чистый (полная сборка);
-2. при необходимости генерирует `gui/nax5.ico`;
-3. собирает `chiaki.exe` (Release) и unit-тесты `nax5-*-unit`;
+2. при необходимости генерирует `gui/nax5.ico` (если есть `assets/branding/nax5-brand-sheet.jpg`, сначала запустите `python scripts/branding/import-nax5-logo.py`);
+3. собирает `chiaki.exe` (Release) и запускает `nax5-auth-unit`, `nax5-session-unit` и `nax5-connection-unit`; `nax5-telemetry-unit` объявлен в CMake и запускается отдельно до тега;
 4. упаковывает portable tree через `scripts/deploy-windows-msys2.sh` (FFmpeg/SDL/libplacebo явно + `objdump` по импортам);
 5. собирает Inno installer и `NAX5-windows.zip`;
 6. запускает `verify-clean-windows-launch.ps1` (PATH без MSYS2, silent install).
@@ -81,7 +81,7 @@ Expand-Archive artifacts\alpha-0.5\NAX5-windows.zip -DestinationPath $env:TEMP\n
 
 Ожидаемо:
 
-- `NAX5-windows.zip` — один `NAX5.exe` (Inno Setup, FileDescription = `NAX5 Setup`);
+- `NAX5-windows.zip` — ровно один `NAX5.exe` (Inno Setup, FileDescription = `NAX5 Setup`); это канонический release download;
 - мастер установки, затем `chiaki.exe` из `%LOCALAPPDATA%\Programs\NAX5`;
 - portable tree содержит `avutil-*.dll`, `avcodec-*.dll`, `avformat-*.dll`, `swresample-*.dll`;
 - `chiaki.exe` с `FileDescription = NAX5 Remote Play Client`;
@@ -90,7 +90,7 @@ Expand-Archive artifacts\alpha-0.5\NAX5-windows.zip -DestinationPath $env:TEMP\n
 ## Публикация на GitHub Releases
 
 1. Обновите `RELEASES.md` в workspace `C:\astro`.
-2. Создайте тег, например `alpha-0.5-build-3`.
+2. Создайте тег `alpha-0.5-build-4`.
 3. Загрузите assets:
    - `NAX5-windows.zip` (обязательно)
    - `NAX5-windows-installer.zip` (то же содержимое с chiaki-ng именем)

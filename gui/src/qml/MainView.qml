@@ -426,14 +426,18 @@ Pane {
     Image {
         id: logoImage
         anchors.centerIn: parent
-        source: "qrc:/icons/nax5-logo-white.svg"
-        sourceSize: Qt.size(Math.min(parent.width, parent.height) / 2, Math.min(parent.width, parent.height) / 2)
+        fillMode: Image.PreserveAspectFit
+        width: Math.min(parent.width, parent.height) * 0.55
+        height: width / 3.14
+        source: "qrc:/icons/nax5-logo.png"
+        sourceSize.width: 760
+        sourceSize.height: 242
 
         PropertyAnimation {
             target: logoImage
             property: "opacity"
             from: 0.05
-            to: 0.20
+            to: 0.16
             duration: 1000
             easing.type: Easing.OutCubic
             running: true

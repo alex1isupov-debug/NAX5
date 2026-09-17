@@ -3140,10 +3140,13 @@ DialogView {
                 Keys.onEscapePressed: aboutDialog.close()
 
                 Image {
-                    Layout.preferredWidth: 200
+                    Layout.preferredWidth: 220
+                    Layout.preferredHeight: 70
                     fillMode: Image.PreserveAspectFit
                     verticalAlignment: Image.AlignTop
-                    source: "qrc:icons/nax5-logo.svg"
+                    source: "qrc:/icons/nax5-logo.png"
+                    sourceSize.width: 760
+                    sourceSize.height: 242
                 }
 
                 Label {

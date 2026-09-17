@@ -52,11 +52,13 @@ LAUNCHER_EXE="$OUT/NAX5.exe"
 LAUNCHER_ZIP="$OUT/NAX5-windows.zip"
 INSTALLER="$OUT/NAX5-windows-installer.exe"
 EXE="$BUILD/gui/chiaki.exe"
-RELEASE_TAG="alpha-0.5-build-3"
+RELEASE_TAG="alpha-0.5-build-4"
 
 cd "$ROOT"
 
-if [[ ! -f "$ROOT/gui/nax5.ico" ]]; then
+if [[ -f "$ROOT/assets/branding/nax5-brand-sheet.jpg" ]]; then
+  /mingw64/bin/python3 "$ROOT/scripts/branding/import-nax5-logo.py"
+elif [[ ! -f "$ROOT/gui/nax5.ico" || ! -f "$ROOT/gui/res/nax5-logo.png" ]]; then
   /mingw64/bin/python3 "$ROOT/scripts/branding/generate-nax5-ico.py"
 fi
 

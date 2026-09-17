@@ -29,10 +29,12 @@ Item {
 
             Image {
                 Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: 220
-                Layout.preferredHeight: 52
+                Layout.preferredWidth: 380
+                Layout.preferredHeight: 121
                 fillMode: Image.PreserveAspectFit
-                source: "qrc:/icons/nax5-logo.svg"
+                source: "qrc:/icons/nax5-logo.png"
+                sourceSize.width: 760
+                sourceSize.height: 242
             }
 
             Label {

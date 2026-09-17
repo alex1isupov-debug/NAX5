@@ -1,6 +1,6 @@
 # TEST MATRIX
 
-Permanent NAX5 test register. Status is automated unless marked Manual. Current target: Alpha 0.5 (`alpha-0.5-build-1`).
+Permanent NAX5 test register. Status is automated unless marked Manual. Current target: Alpha 0.5 build 4 (`alpha-0.5-build-4`).
 
 | Test | Automated/Manual | Backend/NAX5/Vanilla/Both | LAN/WAN | Commit | Status | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -18,6 +18,7 @@ Permanent NAX5 test register. Status is automated unless marked Manual. Current 
 | Auth unit | Automated | NAX5 | n/a | | Implemented | `nax5-auth-unit` |
 | Session unit | Automated | NAX5 | n/a | | Implemented | `nax5-session-unit` |
 | Connection unit | Automated | NAX5 | n/a | | Implemented | `nax5-connection-unit` |
+| Telemetry unit | Automated | NAX5 | n/a | | Implemented | `nax5-telemetry-unit`; installation/version/SHA fields and secret screening |
 | Settings contract (Settings* → StreamSessionConnectInfo) | Automated | NAX5 | n/a | | Source contract script | `verify-settings-contract.ps1` |
 | Product QML hides Register/Consoles/PSN/export | Automated | NAX5 | n/a | | Source contract script | `verify-qml-product-mode.ps1` |
 | No host persistence in NAX5 adapter | Automated | NAX5 | n/a | | Source contract script | `verify-no-host-persistence.ps1` |
@@ -34,6 +35,7 @@ Permanent NAX5 test register. Status is automated unless marked Manual. Current 
 | Operator physical PIN + READY | Manual | Both | LAN | | **STOP here** | do not simulate PS5 |
 | Product 0 registered hosts automatic play | Manual | NAX5 | LAN/WAN | | **NOT TESTED** | Alpha 0.5 user pack |
 | Client-reports upload on quit/manual | Manual | NAX5 | WAN | | **NOT TESTED** | apex `/api/v1/client-reports/` |
+| Telemetry event payload privacy | Automated | NAX5 | n/a | | Implemented | no password, session token, registration key, or morning value |
 | Process + session log rotation | Automated | NAX5 | n/a | | Implemented | `nax5processlog`, 5 files |
 | Vanilla A/B 5–10 min | Manual | Both | LAN/WAN | | After user connect | same PC/PS5/controller |
 | 30+ minute soak | Manual | NAX5 | LAN/WAN | | **NOT TESTED** | heartbeat is Task 6; hard TTL 7200s |

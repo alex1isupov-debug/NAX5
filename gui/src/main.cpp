@@ -129,7 +129,7 @@ int real_main(int argc, char *argv[])
 #ifdef Q_OS_MACOS
 	QGuiApplication::setWindowIcon(QIcon(":/icons/chiaking_macos.svg"));
 #else
-	QGuiApplication::setWindowIcon(QIcon(":/icons/nax5.svg"));
+	QGuiApplication::setWindowIcon(QIcon(":/icons/nax5.png"));
 #endif
 
 	QCommandLineParser parser;
