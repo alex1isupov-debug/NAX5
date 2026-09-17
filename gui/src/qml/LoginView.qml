@@ -13,8 +13,9 @@ Item {
     function submit() {
         if (Nax5Auth.authenticating)
             return
-        Nax5Auth.login(emailField.text.trim(), passwordField.text)
-        passwordField.text = ""
+        Nax5Auth.login(emailField.text.trim(), passwordField.text, rememberCheckBox.checked)
+        if (!rememberCheckBox.checked)
+            passwordField.text = ""
     }
 
     Keys.onEscapePressed: root.showConfirmDialog(qsTr("Quit"), qsTr("Are you sure you want to quit?"), () => Qt.quit())
@@ -67,6 +68,15 @@ Item {
                 Keys.onReturnPressed: loginRoot.submit()
             }
 
+            CheckBox {
+                id: rememberCheckBox
+                Layout.fillWidth: true
+                text: qsTr("Запомнить меня")
+                checked: Nax5Auth.rememberEnabled
+                enabled: !Nax5Auth.authenticating
+                onCheckedChanged: Nax5Auth.rememberEnabled = checked
+            }
+
             Label {
                 id: errorLabel
                 Layout.fillWidth: true
@@ -107,5 +117,11 @@ Item {
         }
     }
 
-    Component.onCompleted: emailField.forceActiveFocus()
+    Component.onCompleted: {
+        if (Nax5Auth.savedEmail.length > 0)
+            emailField.text = Nax5Auth.savedEmail
+        if (Nax5Auth.rememberEnabled && Nax5Auth.savedPassword.length > 0)
+            passwordField.text = Nax5Auth.savedPassword
+        emailField.forceActiveFocus()
+    }
 }

@@ -66,6 +66,8 @@ set(SOURCE_FILES
 	src/nax5/nax5authstate.cpp
 	include/nax5/nax5authcontroller.h
 	src/nax5/nax5authcontroller.cpp
+	include/nax5/nax5authstore.h
+	src/nax5/nax5authstore.cpp
 	include/nax5/session/nax5sessionerror.h
 	src/nax5/session/nax5sessionerror.cpp
 	include/nax5/session/nax5sessionstate.h

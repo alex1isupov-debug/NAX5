@@ -1,6 +1,9 @@
 #include "nax5/nax5authcontroller.h"
 #include "nax5/nax5apiclient.h"
 #include "nax5/nax5authparser.h"
+#include "nax5/nax5authstore.h"
+
+#include <QTimer>
 
 Nax5AuthController::Nax5AuthController(QObject *parent)
     : QObject(parent)
@@ -8,6 +11,10 @@ Nax5AuthController::Nax5AuthController(QObject *parent)
     , auth_state(Nax5AuthStateUnauthenticated)
     , user_id(0)
     , email_verified(false)
+    , remember_enabled(nax5AuthRememberEnabled())
+    , restoring_session(false)
+    , fresh_login(false)
+    , pending_remember(false)
     , login_request_id(0)
     , me_request_id(0)
     , logout_request_id(0)
@@ -15,12 +22,35 @@ Nax5AuthController::Nax5AuthController(QObject *parent)
     connect(api, &Nax5ApiClient::loginFinished, this, &Nax5AuthController::onLoginFinished);
     connect(api, &Nax5ApiClient::meFinished, this, &Nax5AuthController::onMeFinished);
     connect(api, &Nax5ApiClient::logoutFinished, this, &Nax5AuthController::onLogoutFinished);
+    QTimer::singleShot(0, this, &Nax5AuthController::tryRestoreSession);
 }
 
 Nax5AuthController::~Nax5AuthController()
 {
     clearSessionToken();
     api->abortAll();
+}
+
+QString Nax5AuthController::savedEmail() const
+{
+    return nax5AuthSavedEmail();
+}
+
+QString Nax5AuthController::savedPassword() const
+{
+    return nax5AuthSavedPassword();
+}
+
+void Nax5AuthController::setRememberEnabled(bool enabled)
+{
+    if (remember_enabled == enabled)
+        return;
+    remember_enabled = enabled;
+    nax5AuthSetRememberEnabled(enabled);
+    if (!enabled)
+        nax5AuthClearCredentials();
+    emit rememberEnabledChanged();
+    emit savedCredentialsChanged();
 }
 
 void Nax5AuthController::setState(Nax5AuthState next)
@@ -57,10 +87,47 @@ void Nax5AuthController::clearSessionToken()
     session_token.clear();
 }
 
-void Nax5AuthController::login(const QString &email, const QString &password)
+void Nax5AuthController::tryRestoreSession()
+{
+    if (!remember_enabled || authenticated() || authenticating())
+        return;
+
+    const QString token = nax5AuthSavedSessionToken();
+    if (!token.isEmpty())
+    {
+        restoring_session = true;
+        setError(Nax5AuthErrorNone);
+        setState(nax5AuthReduce(auth_state, Nax5AuthActionLoginClicked));
+        session_token = token;
+        me_request_id = api->fetchMe(session_token);
+        return;
+    }
+
+    tryPasswordLoginAfterRestoreFailure();
+}
+
+void Nax5AuthController::tryPasswordLoginAfterRestoreFailure()
+{
+    if (!remember_enabled)
+        return;
+    const QString email = nax5AuthSavedEmail();
+    const QString password = nax5AuthSavedPassword();
+    if (email.isEmpty() || password.isEmpty())
+        return;
+    login(email, password, true);
+}
+
+void Nax5AuthController::login(const QString &email, const QString &password, bool remember)
 {
     if (!nax5AuthCanStartLogin(auth_state))
         return;
+
+    fresh_login = true;
+    pending_remember = remember;
+    if (!pending_password.isEmpty())
+        pending_password.fill(QLatin1Char(' '));
+    pending_password = password;
+    setRememberEnabled(remember);
 
     setError(Nax5AuthErrorNone);
     setState(nax5AuthReduce(auth_state, Nax5AuthActionLoginClicked));
@@ -71,13 +138,37 @@ void Nax5AuthController::logout()
 {
     login_request_id = 0;
     me_request_id = 0;
+    restoring_session = false;
     const QString token = session_token;
     clearSessionToken();
     clearAccount();
     setError(Nax5AuthErrorNone);
     setState(nax5AuthReduce(auth_state, Nax5AuthActionLogout));
+    if (remember_enabled)
+    {
+        nax5AuthSaveCredentials(nax5AuthSavedEmail(), nax5AuthSavedPassword(), QString());
+        emit savedCredentialsChanged();
+    }
     if (!token.isEmpty())
         logout_request_id = api->logout(token);
+    if (!pending_password.isEmpty())
+        pending_password.fill(QLatin1Char(' '));
+    pending_password.clear();
+}
+
+void Nax5AuthController::persistCredentialsIfNeeded()
+{
+    if (!pending_remember)
+    {
+        nax5AuthClearCredentials();
+        if (remember_enabled)
+            setRememberEnabled(false);
+        emit savedCredentialsChanged();
+        return;
+    }
+
+    nax5AuthSaveCredentials(account_email, pending_password, session_token);
+    emit savedCredentialsChanged();
 }
 
 void Nax5AuthController::onLoginFinished(quint64 request_id, const Nax5LoginParseResult &result)
@@ -87,6 +178,7 @@ void Nax5AuthController::onLoginFinished(quint64 request_id, const Nax5LoginPars
     login_request_id = 0;
     if (result.error != Nax5AuthErrorNone)
     {
+        restoring_session = false;
         clearSessionToken();
         setError(result.error);
         setState(nax5AuthReduce(auth_state, Nax5AuthActionLoginFailed));
@@ -103,12 +195,20 @@ void Nax5AuthController::onMeFinished(quint64 request_id, const Nax5MeParseResul
     me_request_id = 0;
     if (!result.ok)
     {
+        if (restoring_session)
+        {
+            restoring_session = false;
+            clearSessionToken();
+            tryPasswordLoginAfterRestoreFailure();
+            return;
+        }
         clearSessionToken();
         clearAccount();
         setError(result.network_failure ? Nax5AuthErrorNetworkError : Nax5AuthErrorInvalidResponse);
         setState(nax5AuthReduce(auth_state, Nax5AuthActionLoginFailed));
         return;
     }
+    restoring_session = false;
     user_id = result.user_id;
     account_email = result.email;
     account_city = result.city;
@@ -117,6 +217,19 @@ void Nax5AuthController::onMeFinished(quint64 request_id, const Nax5MeParseResul
     emit accountChanged();
     setError(Nax5AuthErrorNone);
     setState(nax5AuthReduce(auth_state, Nax5AuthActionLoginSucceeded));
+    if (fresh_login)
+    {
+        persistCredentialsIfNeeded();
+        fresh_login = false;
+        if (!pending_password.isEmpty())
+            pending_password.fill(QLatin1Char(' '));
+        pending_password.clear();
+    }
+    else if (remember_enabled)
+    {
+        nax5AuthSaveCredentials(account_email, nax5AuthSavedPassword(), session_token);
+        emit savedCredentialsChanged();
+    }
 }
 
 void Nax5AuthController::onLogoutFinished(quint64 request_id)

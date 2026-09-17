@@ -22,6 +22,9 @@ class Nax5AuthController : public QObject
     Q_PROPERTY(QString city READ city NOTIFY accountChanged)
     Q_PROPERTY(QString accessStatus READ accessStatus NOTIFY accountChanged)
     Q_PROPERTY(bool emailVerified READ emailVerified NOTIFY accountChanged)
+    Q_PROPERTY(bool rememberEnabled READ rememberEnabled WRITE setRememberEnabled NOTIFY rememberEnabledChanged)
+    Q_PROPERTY(QString savedEmail READ savedEmail NOTIFY savedCredentialsChanged)
+    Q_PROPERTY(QString savedPassword READ savedPassword NOTIFY savedCredentialsChanged)
 
 public:
     explicit Nax5AuthController(QObject *parent = nullptr);
@@ -36,16 +39,23 @@ public:
     QString city() const { return account_city; }
     QString accessStatus() const { return access_status; }
     bool emailVerified() const { return email_verified; }
+    bool rememberEnabled() const { return remember_enabled; }
+    QString savedEmail() const;
+    QString savedPassword() const;
 
     QString sessionToken() const { return session_token; }
 
-    Q_INVOKABLE void login(const QString &email, const QString &password);
+    Q_INVOKABLE void setRememberEnabled(bool enabled);
+    Q_INVOKABLE void login(const QString &email, const QString &password, bool remember = false);
+    Q_INVOKABLE void tryRestoreSession();
     Q_INVOKABLE void logout();
 
 signals:
     void stateChanged();
     void errorMessageChanged();
     void accountChanged();
+    void rememberEnabledChanged();
+    void savedCredentialsChanged();
 
 private:
     void setState(Nax5AuthState next);
@@ -55,6 +65,8 @@ private:
     void onLoginFinished(quint64 request_id, const Nax5LoginParseResult &result);
     void onMeFinished(quint64 request_id, const Nax5MeParseResult &result);
     void onLogoutFinished(quint64 request_id);
+    void persistCredentialsIfNeeded();
+    void tryPasswordLoginAfterRestoreFailure();
 
     Nax5ApiClient *api;
     Nax5AuthState auth_state;
@@ -65,6 +77,11 @@ private:
     QString account_city;
     QString access_status;
     bool email_verified;
+    bool remember_enabled;
+    bool restoring_session;
+    bool fresh_login;
+    bool pending_remember;
+    QString pending_password;
     quint64 login_request_id;
     quint64 me_request_id;
     quint64 logout_request_id;
