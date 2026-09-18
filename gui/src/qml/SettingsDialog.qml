@@ -3153,8 +3153,8 @@ DialogView {
                     Layout.preferredWidth: 400
                     verticalAlignment: Text.AlignTop
                     wrapMode: Text.Wrap
-                    text: "<h1>NAX5 Alpha 0.5</h1> based on chiaki-ng by Street Pea, engine version %1
-                        <h2>Fork of Chiaki</h2> by Florian Markl at version 2.1.1
+                    text: "<h1>NAX5</h1> version %1
+                        <h2>Fork of Chiaki</h2> based on chiaki-ng by Street Pea, originally by Florian Markl at version 2.1.1
 
                         <p>This program is free software: you can redistribute it and/or modify
                         it under the terms of the GNU Affero General Public License version 3

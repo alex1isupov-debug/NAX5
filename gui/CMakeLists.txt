@@ -100,6 +100,30 @@ set(SOURCE_FILES
 	)
 set(RESOURCE_FILES "")
 
+set(NAX5_VERSION "unknown")
+if(EXISTS "${CMAKE_SOURCE_DIR}/VERSION")
+	file(READ "${CMAKE_SOURCE_DIR}/VERSION" NAX5_VERSION)
+	string(STRIP "${NAX5_VERSION}" NAX5_VERSION)
+endif()
+if(NOT NAX5_VERSION)
+	set(NAX5_VERSION "unknown")
+endif()
+set(NAX5_CLIENT_SHA "unknown")
+find_package(Git QUIET)
+if(GIT_FOUND)
+	execute_process(
+		COMMAND ${GIT_EXECUTABLE} rev-parse --short=12 HEAD
+		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+		OUTPUT_VARIABLE NAX5_CLIENT_SHA
+		OUTPUT_STRIP_TRAILING_WHITESPACE
+		ERROR_QUIET
+	)
+endif()
+if(NOT NAX5_CLIENT_SHA)
+	set(NAX5_CLIENT_SHA "unknown")
+endif()
+message(STATUS "NAX5 product version ${NAX5_VERSION} (${NAX5_CLIENT_SHA})")
+
 if(APPLE)
 	list(APPEND RESOURCE_FILES "chiaking.icns")
 elseif(WIN32)
@@ -136,21 +160,10 @@ add_executable(chiaki WIN32
 		${SOURCE_FILES}
 )
 target_include_directories(chiaki PRIVATE include)
-find_package(Git QUIET)
-set(NAX5_CLIENT_SHA "unknown")
-if(GIT_FOUND)
-	execute_process(
-		COMMAND ${GIT_EXECUTABLE} describe --always --dirty
-		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-		OUTPUT_VARIABLE NAX5_CLIENT_SHA
-		OUTPUT_STRIP_TRAILING_WHITESPACE
-		ERROR_QUIET
-	)
-endif()
-if(NOT NAX5_CLIENT_SHA)
-	set(NAX5_CLIENT_SHA "unknown")
-endif()
-target_compile_definitions(chiaki PRIVATE NAX5_CLIENT_SHA="${NAX5_CLIENT_SHA}")
+target_compile_definitions(chiaki PRIVATE
+	NAX5_VERSION="${NAX5_VERSION}"
+	NAX5_CLIENT_SHA="${NAX5_CLIENT_SHA}"
+)
 
 add_library(placebo-libav-impl src/libav_impl.c)
 target_link_libraries(placebo-libav-impl PkgConfig::LIBPLACEBO FFMPEG::avcodec FFMPEG::avutil FFMPEG::avformat)
@@ -262,11 +275,16 @@ if(CHIAKI_ENABLE_TESTS)
 		src/nax5/nax5runtime.cpp
 		src/nax5/nax5installationid.cpp
 		src/nax5/nax5processlog.cpp
+		src/nax5/nax5clientreport.cpp
 		src/nax5/nax5telemetry.cpp
 		src/nax5/nax5telemetry_test.cpp
 	)
-	target_include_directories(nax5-telemetry-unit PRIVATE include)
-	target_compile_definitions(nax5-telemetry-unit PRIVATE CHIAKI_VERSION="test" NAX5_CLIENT_SHA="testsha")
+	target_include_directories(nax5-telemetry-unit PRIVATE include ${CMAKE_SOURCE_DIR}/lib/include)
+	target_compile_definitions(nax5-telemetry-unit PRIVATE
+		CHIAKI_VERSION="1.10.0"
+		NAX5_VERSION="testver"
+		NAX5_CLIENT_SHA="testsha"
+	)
 	target_link_libraries(nax5-telemetry-unit Qt::Core)
 	add_test(NAME nax5-telemetry COMMAND nax5-telemetry-unit)
 endif()

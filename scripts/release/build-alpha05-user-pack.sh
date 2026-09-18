@@ -52,7 +52,11 @@ LAUNCHER_EXE="$OUT/NAX5.exe"
 LAUNCHER_ZIP="$OUT/NAX5-windows.zip"
 INSTALLER="$OUT/NAX5-windows-installer.exe"
 EXE="$BUILD/gui/chiaki.exe"
-RELEASE_TAG="alpha-0.5-build-5"
+if [[ ! -f "$ROOT/VERSION" ]]; then
+  echo "Missing $ROOT/VERSION" >&2
+  exit 1
+fi
+RELEASE_TAG="$(head -n1 "$ROOT/VERSION" | tr -d '\r\n')"
 
 cd "$ROOT"
 
@@ -90,11 +94,12 @@ cmake -S "$ROOT" -B "$BUILD" -G Ninja \
 echo "building chiaki..."
 cmake --build "$BUILD" --config Release --target chiaki
 echo "building unit tests..."
-cmake --build "$BUILD" --config Release --target nax5-auth-unit nax5-session-unit nax5-connection-unit
+cmake --build "$BUILD" --config Release --target nax5-auth-unit nax5-session-unit nax5-connection-unit nax5-telemetry-unit
 
 "$BUILD/gui/nax5-auth-unit.exe"
 "$BUILD/gui/nax5-session-unit.exe"
 "$BUILD/gui/nax5-connection-unit.exe"
+"$BUILD/gui/nax5-telemetry-unit.exe"
 echo "unit tests passed"
 
 test -f "$EXE"

@@ -17,7 +17,11 @@ USER_DIR="$OUT/portable/NAX5"
 PORTABLE_ZIP="$OUT/NAX5-windows-portable.zip"
 LEGACY_PORTABLE_ZIP="$OUT/NAX5-Alpha-0.5-Windows-x64.zip"
 EXE="$BUILD/gui/chiaki.exe"
-RELEASE_TAG="alpha-0.5-build-5"
+if [[ ! -f "$ROOT/VERSION" ]]; then
+  echo "Missing $ROOT/VERSION" >&2
+  exit 1
+fi
+RELEASE_TAG="$(head -n1 "$ROOT/VERSION" | tr -d '\r\n')"
 
 test -f "$EXE"
 

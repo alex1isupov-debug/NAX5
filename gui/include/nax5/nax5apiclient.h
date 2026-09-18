@@ -2,6 +2,7 @@
 
 #include "nax5/nax5apilane.h"
 #include "nax5/nax5autherror.h"
+#include "nax5/nax5clientreport.h"
 #include "nax5/nax5authparser.h"
 #include "nax5/connection/nax5connectionparser.h"
 #include "nax5/session/nax5sessionparser.h"
@@ -29,6 +30,7 @@ public:
     quint64 cancelSession(const QString &session_token, const QString &public_session_id);
     quint64 fetchConnection(const QString &session_token, const QString &public_session_id);
     quint64 markConnected(const QString &session_token, const QString &public_session_id);
+    quint64 heartbeatSession(const QString &session_token, const QString &public_session_id);
     quint64 failSession(const QString &session_token, const QString &public_session_id);
     quint64 endSession(const QString &session_token, const QString &public_session_id);
     quint64 operatorProvision(const QString &session_token, const QString &console_code, const QByteArray &body);
@@ -36,6 +38,11 @@ public:
     quint64 operatorTestConnection(const QString &session_token, const QString &console_code);
     quint64 operatorTestResult(const QString &session_token, const QString &console_code, const QByteArray &body);
     quint64 postClientReport(const QString &session_token, const QByteArray &body);
+    quint64 postClientReportArchive(
+        const QString &session_token,
+        Nax5ClientReportKind kind,
+        const QString &session_public_id,
+        const QByteArray &zip_bytes);
     quint64 postClientEvents(const QString &session_token, const QByteArray &body);
     void abortLane(Nax5ApiLane lane);
     void abortAll();
@@ -50,6 +57,7 @@ signals:
     void cancelFinished(quint64 request_id, const Nax5SessionParseResult &result);
     void connectionFinished(quint64 request_id, const Nax5ConnectionParseResult &result);
     void connectedFinished(quint64 request_id, const Nax5SessionParseResult &result);
+    void heartbeatFinished(quint64 request_id, const Nax5SessionParseResult &result);
     void failFinished(quint64 request_id, const Nax5SessionParseResult &result);
     void endFinished(quint64 request_id, const Nax5SessionParseResult &result);
     void operatorFinished(quint64 request_id, const Nax5ConnectionParseResult &result);
@@ -72,6 +80,7 @@ private:
     void finishCancel(quint64 request_id, QNetworkReply *reply);
     void finishConnection(quint64 request_id, QNetworkReply *reply);
     void finishConnected(quint64 request_id, QNetworkReply *reply);
+    void finishHeartbeat(quint64 request_id, QNetworkReply *reply);
     void finishFail(quint64 request_id, QNetworkReply *reply);
     void finishEnd(quint64 request_id, QNetworkReply *reply);
     void finishOperator(quint64 request_id, QNetworkReply *reply);

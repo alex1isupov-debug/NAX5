@@ -93,12 +93,15 @@ private:
     void reportOperatorTestResult(bool passed);
     void syncCurrent();
     void scheduleLeaseSync(const QString &lease_expires_at);
+    void scheduleHeartbeat(int delay_ms);
+    void sendHeartbeat();
     void onAuthStateChanged();
     void onReserveFinished(quint64 request_id, const Nax5SessionParseResult &result);
     void onCurrentFinished(quint64 request_id, const Nax5SessionParseResult &result);
     void onCancelFinished(quint64 request_id, const Nax5SessionParseResult &result);
     void onConnectionFinished(quint64 request_id, const Nax5ConnectionParseResult &result);
     void onConnectedFinished(quint64 request_id, const Nax5SessionParseResult &result);
+    void onHeartbeatFinished(quint64 request_id, const Nax5SessionParseResult &result);
     void onFailFinished(quint64 request_id, const Nax5SessionParseResult &result);
     void onEndFinished(quint64 request_id, const Nax5SessionParseResult &result);
     void fetchConnection();
@@ -118,6 +121,7 @@ private:
     void abortReserveAndSyncCurrent();
     void waitForShutdownIo();
     void submitClientReport(Nax5ClientReportKind kind);
+    void flushPendingClientReport();
     void emitTelemetry(const QString &event_type);
     bool streamSessionAlive() const;
     quint64 bumpGeneration();
@@ -127,6 +131,8 @@ private:
     QPointer<QmlBackend> backend;
     Nax5ApiClient *api;
     QTimer *lease_timer;
+    QTimer *heartbeat_timer;
+    QTimer *reserve_backoff_timer;
     Nax5GameSessionState session_state;
     QString status_text;
     QString error_message;
@@ -144,6 +150,7 @@ private:
     quint64 cancel_request_id;
     quint64 connection_request_id;
     quint64 connected_request_id;
+    quint64 heartbeat_request_id;
     quint64 test_result_request_id;
     quint64 operator_request_id;
     bool ignore_cancel_result;

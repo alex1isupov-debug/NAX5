@@ -1,7 +1,6 @@
 #include "nax5/nax5telemetry.h"
 
 #include "nax5/nax5processlog.h"
-#include "nax5/nax5runtime.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -11,16 +10,11 @@
 
 namespace {
 
-QString clientVersion()
-{
-    return QStringLiteral(CHIAKI_VERSION);
-}
-
 QJsonObject installationObject()
 {
     QJsonObject installation;
     installation.insert(QStringLiteral("installation_id"), nax5InstallationId());
-    installation.insert(QStringLiteral("client_version"), clientVersion());
+    installation.insert(QStringLiteral("client_version"), nax5ClientVersion());
     installation.insert(QStringLiteral("client_sha"), nax5ClientSha());
     installation.insert(QStringLiteral("platform"), QStringLiteral("windows"));
 #if defined(Q_OS_WIN)
@@ -41,7 +35,7 @@ QByteArray nax5BuildClientEventBatch(const QString &event_type, const QString &s
     QJsonObject event;
     event.insert(QStringLiteral("event_id"), QUuid::createUuid().toString(QUuid::WithoutBraces));
     event.insert(QStringLiteral("event_type"), event_type);
-    event.insert(QStringLiteral("client_version"), clientVersion());
+    event.insert(QStringLiteral("client_version"), nax5ClientVersion());
     event.insert(QStringLiteral("client_sha"), nax5ClientSha());
     if (!session_public_id.isEmpty())
         event.insert(QStringLiteral("session_public_id"), session_public_id);
@@ -67,7 +61,7 @@ void nax5QueueClientEvent(const QString &event_type, const QString &session_publ
     QJsonObject event;
     event.insert(QStringLiteral("event_id"), QUuid::createUuid().toString(QUuid::WithoutBraces));
     event.insert(QStringLiteral("event_type"), event_type);
-    event.insert(QStringLiteral("client_version"), clientVersion());
+    event.insert(QStringLiteral("client_version"), nax5ClientVersion());
     event.insert(QStringLiteral("client_sha"), nax5ClientSha());
     if (!session_public_id.isEmpty())
         event.insert(QStringLiteral("session_public_id"), session_public_id);

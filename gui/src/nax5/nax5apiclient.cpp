@@ -1,6 +1,9 @@
 #include "nax5/nax5apiclient.h"
 #include "nax5/nax5apiconfig.h"
+#include "nax5/nax5processlog.h"
 
+#include <QHttpMultiPart>
+#include <QHttpPart>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLoggingCategory>
@@ -414,6 +417,24 @@ quint64 Nax5ApiClient::markConnected(const QString &session_token, const QString
     return request_id;
 }
 
+quint64 Nax5ApiClient::heartbeatSession(const QString &session_token, const QString &public_session_id)
+{
+    const quint64 request_id = next_request_id++;
+    const QString path = QStringLiteral("/api/v1/sessions/%1/heartbeat/").arg(public_session_id);
+    QNetworkReply *reply = sendJson(Nax5ApiLaneTerminal, request_id, QStringLiteral("POST"), path, QByteArray("{}"), session_token);
+    if (!reply)
+    {
+        Nax5SessionParseResult result;
+        result.error = Nax5SessionErrorServerError;
+        emit heartbeatFinished(request_id, result);
+        return request_id;
+    }
+    connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
+        finishHeartbeat(request_id, reply);
+    });
+    return request_id;
+}
+
 quint64 Nax5ApiClient::failSession(const QString &session_token, const QString &public_session_id)
 {
     const quint64 request_id = next_request_id++;
@@ -556,6 +577,23 @@ void Nax5ApiClient::finishConnected(quint64 request_id, QNetworkReply *reply)
     reply->deleteLater();
 }
 
+void Nax5ApiClient::finishHeartbeat(quint64 request_id, QNetworkReply *reply)
+{
+    if (!completeLive(request_id))
+    {
+        reply->deleteLater();
+        return;
+    }
+    bool used_body = false;
+    Nax5SessionParseResult result = finishSessionNetwork(reply, &used_body);
+    if (used_body)
+        result = nax5ParseCancelResponse(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(), reply->readAll());
+    if (result.error != Nax5SessionErrorNone)
+        qCWarning(nax5Api) << "heartbeat failed:" << result.error;
+    emit heartbeatFinished(request_id, result);
+    reply->deleteLater();
+}
+
 void Nax5ApiClient::finishFail(quint64 request_id, QNetworkReply *reply)
 {
     if (!completeLive(request_id))
@@ -623,6 +661,71 @@ quint64 Nax5ApiClient::postClientEvents(const QString &session_token, const QByt
         if (status != 200 && status != 201 && status != 204)
             qCWarning(nax5Api) << "client-events upload failed" << status;
         reply->deleteLater();
+    });
+    return request_id;
+}
+
+quint64 Nax5ApiClient::postClientReportArchive(
+    const QString &session_token,
+    Nax5ClientReportKind kind,
+    const QString &session_public_id,
+    const QByteArray &zip_bytes)
+{
+    abortLane(Nax5ApiLaneReport);
+    const quint64 request_id = next_request_id++;
+    QString config_error;
+    const QUrl base = Nax5ApiConfig::baseUrl(&config_error);
+    if (!base.isValid() || zip_bytes.isEmpty())
+    {
+        qCWarning(nax5Api) << "client-report archive upload skipped";
+        emit clientReportFinished(request_id, 0);
+        return request_id;
+    }
+
+    QHttpMultiPart *multi_part = new QHttpMultiPart(QHttpMultiPart::FormDataType);
+    auto appendField = [&](const QString &name, const QByteArray &value) {
+        QHttpPart part;
+        part.setHeader(QNetworkRequest::ContentDispositionHeader,
+                       QVariant(QStringLiteral("form-data; name=\"%1\"").arg(name)));
+        part.setBody(value);
+        multi_part->append(part);
+    };
+    appendField(QStringLiteral("kind"), nax5ClientReportKindName(kind).toUtf8());
+    appendField(QStringLiteral("client_version"), nax5ClientVersion().toUtf8());
+    appendField(QStringLiteral("client_sha"), nax5ClientSha().toUtf8());
+    if (!session_public_id.isEmpty())
+        appendField(QStringLiteral("session_id"), session_public_id.toUtf8());
+
+    QHttpPart file_part;
+    file_part.setHeader(QNetworkRequest::ContentDispositionHeader,
+                        QVariant(QStringLiteral("form-data; name=\"archive\"; filename=\"report.zip\"")));
+    file_part.setHeader(QNetworkRequest::ContentTypeHeader, QVariant(QStringLiteral("application/zip")));
+    file_part.setBody(zip_bytes);
+    multi_part->append(file_part);
+
+    QUrl url = base.resolved(QUrl(QStringLiteral("/api/v1/client-reports/")));
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::UserAgentHeader, Nax5ApiConfig::userAgent());
+    request.setTransferTimeout(Nax5ApiConfig::requestTimeoutMs());
+    if (!session_token.isEmpty())
+        request.setRawHeader("X-Session-Token", session_token.toUtf8());
+
+    QNetworkReply *reply = network->post(request, multi_part);
+    multi_part->setParent(reply);
+    if (!reply)
+    {
+        qCWarning(nax5Api) << "client-report archive upload failed" << 0;
+        emit clientReportFinished(request_id, 0);
+        return request_id;
+    }
+
+    InFlight item;
+    item.request_id = request_id;
+    item.lane = Nax5ApiLaneReport;
+    item.reply = reply;
+    in_flight.append(item);
+    connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
+        finishClientReport(request_id, reply);
     });
     return request_id;
 }

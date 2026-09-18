@@ -19,6 +19,7 @@ int main(int argc, char *argv[]) { return real_main(argc, argv); }
 #include <controllermanager.h>
 #include <discoverymanager.h>
 #include <qmlmainwindow.h>
+#include "nax5/nax5processlog.h"
 #include "nax5/nax5runtime.h"
 #include <QApplication>
 #include <QtTypes>
@@ -76,7 +77,7 @@ int real_main(int argc, char *argv[])
 
 	QGuiApplication::setOrganizationName(Nax5Runtime::settingsOrganizationName());
 	QGuiApplication::setApplicationName(Nax5Runtime::settingsApplicationName());
-	QGuiApplication::setApplicationVersion(CHIAKI_VERSION);
+	QGuiApplication::setApplicationVersion(nax5ClientVersion());
 	QGuiApplication::setApplicationDisplayName("NAX5");
 #if defined(Q_OS_MACOS)
 	qputenv("QT_MTL_NO_TRANSACTION", "1");

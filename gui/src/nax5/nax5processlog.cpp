@@ -17,6 +17,12 @@
 #include <QVector>
 #include <QtGlobal>
 
+#ifndef CHIAKI_VERSION
+#define CHIAKI_VERSION "unknown"
+#endif
+#ifndef NAX5_VERSION
+#define NAX5_VERSION "unknown"
+#endif
 #ifndef NAX5_CLIENT_SHA
 #define NAX5_CLIENT_SHA "unknown"
 #endif
@@ -93,6 +99,11 @@ QString nax5SanitizeProcessLogLine(const QString &line)
     return sanitized;
 }
 
+QString nax5ClientVersion()
+{
+    return QStringLiteral(NAX5_VERSION);
+}
+
 QString nax5ClientSha()
 {
     return QStringLiteral(NAX5_CLIENT_SHA);
@@ -101,8 +112,9 @@ QString nax5ClientSha()
 QString nax5BuildInfoText()
 {
     QString text;
+    text += QStringLiteral("client_version=%1\n").arg(nax5ClientVersion());
     text += QStringLiteral("client_sha=%1\n").arg(nax5ClientSha());
-    text += QStringLiteral("version=%1\n").arg(QStringLiteral(CHIAKI_VERSION));
+    text += QStringLiteral("chiaki_version=%1\n").arg(QStringLiteral(CHIAKI_VERSION));
     text += QStringLiteral("operator_mode=%1\n").arg(Nax5Runtime::operatorMode() ? QStringLiteral("true") : QStringLiteral("false"));
     return text;
 }
@@ -125,8 +137,9 @@ void nax5ProcessLogStart()
         return;
     }
     const QString header = nax5SanitizeProcessLogLine(
-        QStringLiteral("[%1] nax5 process log start sha=%2 operator=%3\n")
+        QStringLiteral("[%1] nax5 process log start version=%2 sha=%3 operator=%4\n")
             .arg(QDateTime::currentDateTime().toString(Qt::ISODate),
+                 nax5ClientVersion(),
                  nax5ClientSha(),
                  Nax5Runtime::operatorMode() ? QStringLiteral("true") : QStringLiteral("false")));
     file.write(header.toUtf8());

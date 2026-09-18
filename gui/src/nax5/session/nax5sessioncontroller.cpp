@@ -17,6 +17,7 @@
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLoggingCategory>
@@ -25,12 +26,20 @@
 
 Q_LOGGING_CATEGORY(nax5SessionLog, "nax5.session")
 
+namespace {
+constexpr int kHeartbeatIntervalMs = 20 * 1000;
+constexpr int kHeartbeatRetryMs = 5 * 1000;
+constexpr int kNoCapacityBackoffMs = 5 * 1000;
+}
+
 Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBackend *backend, QObject *parent)
     : QObject(parent)
     , auth(auth)
     , backend(backend)
     , api(new Nax5ApiClient(this))
     , lease_timer(new QTimer(this))
+    , heartbeat_timer(new QTimer(this))
+    , reserve_backoff_timer(new QTimer(this))
     , session_state(Nax5GameSessionStateIdle)
     , generation(0)
     , stream_generation(0)
@@ -39,6 +48,7 @@ Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBacken
     , cancel_request_id(0)
     , connection_request_id(0)
     , connected_request_id(0)
+    , heartbeat_request_id(0)
     , test_result_request_id(0)
     , operator_request_id(0)
     , ignore_cancel_result(false)
@@ -58,11 +68,16 @@ Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBacken
     pending_terminal.silent = true;
     lease_timer->setSingleShot(true);
     connect(lease_timer, &QTimer::timeout, this, &Nax5SessionController::syncCurrent);
+    heartbeat_timer->setSingleShot(true);
+    connect(heartbeat_timer, &QTimer::timeout, this, &Nax5SessionController::sendHeartbeat);
+    reserve_backoff_timer->setSingleShot(true);
+    connect(reserve_backoff_timer, &QTimer::timeout, this, &Nax5SessionController::stateChanged);
     connect(api, &Nax5ApiClient::reserveFinished, this, &Nax5SessionController::onReserveFinished);
     connect(api, &Nax5ApiClient::currentFinished, this, &Nax5SessionController::onCurrentFinished);
     connect(api, &Nax5ApiClient::cancelFinished, this, &Nax5SessionController::onCancelFinished);
     connect(api, &Nax5ApiClient::connectionFinished, this, &Nax5SessionController::onConnectionFinished);
     connect(api, &Nax5ApiClient::connectedFinished, this, &Nax5SessionController::onConnectedFinished);
+    connect(api, &Nax5ApiClient::heartbeatFinished, this, &Nax5SessionController::onHeartbeatFinished);
     connect(api, &Nax5ApiClient::failFinished, this, &Nax5SessionController::onFailFinished);
     connect(api, &Nax5ApiClient::endFinished, this, &Nax5SessionController::onEndFinished);
     connect(api, &Nax5ApiClient::operatorFinished, this, [this](quint64 request_id, const Nax5ConnectionParseResult &result) {
@@ -96,6 +111,8 @@ Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBacken
     if (this->backend)
         connect(this->backend, &QmlBackend::sessionChanged, this, &Nax5SessionController::onChiakiSessionChanged);
     connect(qApp, &QCoreApplication::aboutToQuit, this, &Nax5SessionController::prepareShutdown);
+    if (this->auth && this->auth->authenticated())
+        flushPendingClientReport();
 }
 
 Nax5SessionController::~Nax5SessionController()
@@ -113,6 +130,8 @@ bool Nax5SessionController::playEnabled() const
     if (!nax5SessionCanStartPlay(session_state))
         return false;
     if (nax5SessionTerminalBlocksPlay(pending_terminal.mutation))
+        return false;
+    if (reserve_backoff_timer->isActive())
         return false;
     if (streamSessionAlive())
         return false;
@@ -185,6 +204,8 @@ void Nax5SessionController::clearAssignment()
     console_code.clear();
     console_region.clear();
     lease_timer->stop();
+    heartbeat_timer->stop();
+    heartbeat_request_id = 0;
     emit assignmentChanged();
 }
 
@@ -210,6 +231,7 @@ void Nax5SessionController::resetLocal()
     cancel_request_id = 0;
     connection_request_id = 0;
     connected_request_id = 0;
+    heartbeat_request_id = 0;
     test_result_request_id = 0;
     operator_request_id = 0;
     pending_terminal.mutation = Nax5TerminalMutationNone;
@@ -224,6 +246,8 @@ void Nax5SessionController::resetLocal()
     awaiting_abort_current = false;
     pending_start_stream = false;
     unauth_logout_pending = false;
+    heartbeat_timer->stop();
+    reserve_backoff_timer->stop();
     discardMaterial();
     clearAssignment();
     setError(Nax5SessionErrorNone);
@@ -246,6 +270,24 @@ void Nax5SessionController::scheduleLeaseSync(const QString &lease_expires_at)
         lease_timer->start(msec + 250);
 }
 
+void Nax5SessionController::scheduleHeartbeat(int delay_ms)
+{
+    heartbeat_timer->stop();
+    if (session_state != Nax5GameSessionStateActive || session_id.isEmpty() || !auth || liveToken().isEmpty())
+        return;
+    heartbeat_timer->start(delay_ms);
+}
+
+void Nax5SessionController::sendHeartbeat()
+{
+    if (heartbeat_request_id != 0 || session_state != Nax5GameSessionStateActive || !auth || session_id.isEmpty())
+        return;
+    const QString token = liveToken();
+    if (token.isEmpty())
+        return;
+    heartbeat_request_id = api->heartbeatSession(token, session_id);
+}
+
 void Nax5SessionController::syncCurrent()
 {
     if (!auth || !auth->authenticated())
@@ -260,6 +302,7 @@ void Nax5SessionController::onAuthStateChanged()
     emit stateChanged();
     if (auth && auth->authenticated())
     {
+        flushPendingClientReport();
         syncCurrent();
         return;
     }
@@ -319,6 +362,8 @@ void Nax5SessionController::release()
     setStatusText(QStringLiteral("Освобождаем консоль..."));
     setState(nax5SessionReduce(session_state, Nax5GameSessionActionReleaseClicked));
     ignore_cancel_result = false;
+    heartbeat_timer->stop();
+    heartbeat_request_id = 0;
     dispatchTerminal(mutation, false);
     if (streamSessionAlive())
         backend->stopSession(false);
@@ -536,6 +581,25 @@ void Nax5SessionController::saveReport()
         submitClientReport(Nax5ClientReportKindManual);
 }
 
+void Nax5SessionController::flushPendingClientReport()
+{
+    const QString pending_path = nax5PendingClientReportPath();
+    if (pending_path.isEmpty() || !QFile::exists(pending_path))
+        return;
+    const QString token = liveToken();
+    if (token.isEmpty())
+        return;
+    QFile pending_file(pending_path);
+    if (!pending_file.open(QIODevice::ReadOnly))
+        return;
+    const QByteArray zip_bytes = pending_file.readAll();
+    pending_file.close();
+    if (zip_bytes.isEmpty())
+        return;
+    api->postClientReportArchive(token, Nax5ClientReportKindCrash, session_id, zip_bytes);
+    nax5ClearPendingClientReport();
+}
+
 void Nax5SessionController::submitClientReport(Nax5ClientReportKind kind)
 {
     if (kind == Nax5ClientReportKindQuit && client_report_sent_on_shutdown)
@@ -544,8 +608,21 @@ void Nax5SessionController::submitClientReport(Nax5ClientReportKind kind)
         client_report_sent_on_shutdown = true;
     const QString token = liveToken();
     if (token.isEmpty())
+    {
+        if (kind == Nax5ClientReportKindCrash || kind == Nax5ClientReportKindError)
+            nax5WritePendingClientReportZip(kind);
         return;
-    api->postClientReport(token, nax5BuildClientReportJson(kind));
+    }
+    if (kind != Nax5ClientReportKindLogout)
+    {
+        const QByteArray zip_bytes = nax5BuildClientReportZipBytes(kind);
+        if (!zip_bytes.isEmpty())
+        {
+            api->postClientReportArchive(token, kind, session_id, zip_bytes);
+            return;
+        }
+    }
+    api->postClientReport(token, nax5BuildClientReportJson(kind, session_id));
 }
 
 void Nax5SessionController::fetchConnection()
@@ -634,6 +711,11 @@ void Nax5SessionController::onReserveFinished(quint64 request_id, const Nax5Sess
     {
         setStatusText(errorText(result.error));
         setState(nax5SessionReduce(session_state, result.error == Nax5SessionErrorNoCapacity ? Nax5GameSessionActionReserveNoCapacity : Nax5GameSessionActionReserveDenied));
+        if (result.error == Nax5SessionErrorNoCapacity)
+        {
+            reserve_backoff_timer->start(kNoCapacityBackoffMs);
+            emit stateChanged();
+        }
         if (result.error != Nax5SessionErrorUnauthenticated)
             submitClientReport(Nax5ClientReportKindReserveFail);
         return;
@@ -832,6 +914,7 @@ void Nax5SessionController::onStreamFirstFrame()
     emitTelemetry(QStringLiteral("STREAM_CONNECTED"));
     if (auth && !session_id.isEmpty())
         connected_request_id = api->markConnected(auth->sessionToken(), session_id);
+    scheduleHeartbeat(kHeartbeatIntervalMs);
 }
 
 void Nax5SessionController::onConnectedFinished(quint64 request_id, const Nax5SessionParseResult &result)
@@ -843,6 +926,18 @@ void Nax5SessionController::onConnectedFinished(quint64 request_id, const Nax5Se
         return;
     if (nax5ShouldRetryMarkConnected(session_state, shutdown_started, result.error) && auth && !session_id.isEmpty())
         connected_request_id = api->markConnected(auth->sessionToken(), session_id);
+}
+
+void Nax5SessionController::onHeartbeatFinished(quint64 request_id, const Nax5SessionParseResult &result)
+{
+    if (!nax5AcceptAsync(generation, generation, heartbeat_request_id, request_id))
+        return;
+    heartbeat_request_id = 0;
+    if (logoutIfUnauthenticated(result.error))
+        return;
+    if (session_state != Nax5GameSessionStateActive)
+        return;
+    scheduleHeartbeat(result.error == Nax5SessionErrorNone ? kHeartbeatIntervalMs : kHeartbeatRetryMs);
 }
 
 static Nax5SessionError errorFromQuitReason(ChiakiQuitReason reason)
@@ -869,6 +964,8 @@ void Nax5SessionController::onStreamQuit(ChiakiQuitReason reason, const QString 
     if (unauth_logout_pending)
         return;
     pending_start_stream = false;
+    heartbeat_timer->stop();
+    heartbeat_request_id = 0;
     const bool connected_this_play = stream_was_connected;
     const bool handshake_timeout = errorFromQuitReason(reason) == Nax5SessionErrorConnectionTimeout;
     qCInfo(nax5SessionLog) << "stream quit"
