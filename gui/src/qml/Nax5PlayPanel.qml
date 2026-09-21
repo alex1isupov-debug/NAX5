@@ -21,6 +21,13 @@ Rectangle {
         spacing: 10
 
         Label {
+            Layout.fillWidth: true
+            text: qsTr("Версия launcher: %1").arg(Qt.application.version)
+            color: "#9e9e9e"
+            font.pixelSize: 12
+        }
+
+        Label {
             visible: Nax5Auth.authenticated && (!Nax5Auth.emailVerified || Nax5Auth.accessStatus !== "ACTIVE")
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
@@ -51,6 +58,16 @@ Rectangle {
             text: qsTr("Скачать обязательное обновление")
             Material.background: Material.accent
             onClicked: Qt.openUrlExternally(Nax5Session.updateUrl)
+        }
+
+        Label {
+            visible: Nax5Session.updateRequired
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+            color: "#ff5252"
+            font.bold: true
+            font.pixelSize: 16
+            text: qsTr("Требуется обновление launcher. Консоль может быть свободна, но эта версия больше не допускается к игре. Нажмите кнопку выше, установите новую версию и перезапустите NAX5.")
         }
 
         Label {
