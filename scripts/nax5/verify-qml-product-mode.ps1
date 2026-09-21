@@ -19,6 +19,11 @@ if ($operator -notmatch 'nax5ProvisionHost\(hostIndex,') { throw "Operator provi
 if ($play -notmatch 'Nax5Session.play\(\)') { throw "Play UI must stay visible in product" }
 if ($qrc -notmatch 'Nax5OperatorPanel.qml') { throw "Operator QML must be in qml.qrc" }
 if ($qrc -notmatch 'Nax5PlayPanel.qml') { throw "Play QML must be in qml.qrc" }
+if ($qrc -notmatch 'Nax5SettingsDialog.qml') { throw "Product settings dialog must be in qml.qrc" }
+
+$nax5Settings = Get-Content -Raw (Join-Path $qml "Nax5SettingsDialog.qml")
+if ($nax5Settings -notmatch 'Подробные логи') { throw "Product settings must expose verbose logs toggle" }
+if ($nax5Settings -notmatch 'Chiaki.settings.logVerbose') { throw "Product verbose logs toggle must bind Chiaki.settings.logVerbose" }
 
 Write-Host "ok product QML hides Register/Consoles/PSN/export"
 Write-Host "ok operator QML remains available behind operatorMode"

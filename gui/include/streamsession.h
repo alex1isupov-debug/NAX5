@@ -348,6 +348,9 @@ class StreamSession : public QObject
 		bool GetConnected() { return connected; }
 		double GetMeasuredBitrate()	{ return measured_bitrate; }
 		double GetAveragePacketLoss()	{ return average_packet_loss; }
+		quint64 GetInitialRttUs() const { return session.rtt_us; }
+		quint32 GetMtuIn() const { return session.mtu_in; }
+		quint32 GetMtuOut() const { return session.mtu_out; }
 		quint64 DecoderFlushGeneration() const { return decoder_flush_generation.loadRelaxed(); }
 		int GetFramesLost()		{ return frames_lost; }
 		bool GetMuted()	{ return muted; }

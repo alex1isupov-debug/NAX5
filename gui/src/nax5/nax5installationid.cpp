@@ -16,7 +16,8 @@ QString settingsKey()
 
 QString nax5InstallationId()
 {
-    QSettings settings(Nax5Runtime::settingsOrganizationName(), Nax5Runtime::settingsApplicationName());
+    QSettings settings(QSettings::defaultFormat(), QSettings::UserScope,
+        Nax5Runtime::settingsOrganizationName(), Nax5Runtime::settingsApplicationName());
     const QString existing = settings.value(settingsKey()).toString();
     if (!existing.isEmpty())
         return existing;

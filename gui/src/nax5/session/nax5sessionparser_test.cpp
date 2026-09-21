@@ -61,6 +61,16 @@ static void test_unauthenticated()
     expect(nax5ParseReserveResponse(401, "{\"code\":\"UNAUTHENTICATED\"}").error == Nax5SessionErrorUnauthenticated, "401");
 }
 
+static void test_required_update()
+{
+    const Nax5SessionParseResult result = nax5ParseReserveResponse(426,
+        "{\"code\":\"CLIENT_UPDATE_REQUIRED\",\"minimumVersion\":\"alpha-0.5-build-9\","
+        "\"updateUrl\":\"https://cloudgta6.com/account/\"}");
+    expect(result.error == Nax5SessionErrorClientUpdateRequired, "required update error");
+    expect(result.minimum_version == QStringLiteral("alpha-0.5-build-9"), "required update minimum version");
+    expect(result.update_url == QStringLiteral("https://cloudgta6.com/account/"), "required update url");
+}
+
 static void test_conflict_and_rate_limit_and_server()
 {
     expect(nax5ParseReserveResponse(409, "{\"code\":\"ACTIVE_SESSION_EXISTS\",\"session\":{\"id\":\"11111111-1111-4111-8111-111111111111\",\"status\":\"RESERVED\",\"reservedAt\":\"2026-09-09T19:00:00Z\",\"leaseExpiresAt\":\"2026-09-09T19:02:00Z\"},\"console\":{\"code\":\"PS5-439\",\"region\":\"Moscow\"}}").error == Nax5SessionErrorActiveSessionExists, "active exists");
@@ -220,6 +230,7 @@ static void test_shutdown_and_stale_lifecycle()
     expect(!nax5AcceptSessionIdentity(QStringLiteral("session-b"), QStringLiteral("session-a")), "session b ignores a");
     expect(nax5TerminalRetryLimit() >= 2, "bounded retries");
     expect(nax5ShutdownGraceMs() > 0 && nax5ShutdownGraceMs() <= 1000, "short shutdown window");
+    expect(nax5ShutdownReportGraceMs() >= 5000 && nax5ShutdownReportGraceMs() <= 15000, "report upload shutdown window");
 }
 
 static void test_logout_and_connected_end_races()
@@ -348,6 +359,7 @@ int main()
     test_no_capacity();
     test_eligibility_denied();
     test_unauthenticated();
+    test_required_update();
     test_conflict_and_rate_limit_and_server();
     test_malformed_and_timeout();
     test_current_none_and_present();

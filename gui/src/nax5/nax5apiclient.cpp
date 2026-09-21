@@ -10,6 +10,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QTimer>
 #include <QUrl>
 
 Q_LOGGING_CATEGORY(nax5Api, "nax5.api")
@@ -103,6 +104,8 @@ QNetworkReply *Nax5ApiClient::sendJson(Nax5ApiLane lane, quint64 request_id, con
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     request.setHeader(QNetworkRequest::UserAgentHeader, Nax5ApiConfig::userAgent());
+    request.setRawHeader("X-NAX5-Client-Version", nax5ClientVersion().toUtf8());
+    request.setRawHeader("X-NAX5-Client-SHA", nax5ClientSha().toUtf8());
     request.setTransferTimeout(Nax5ApiConfig::requestTimeoutMs());
     if (!session_token.isEmpty())
         request.setRawHeader("X-Session-Token", session_token.toUtf8());
@@ -639,7 +642,17 @@ void Nax5ApiClient::finishOperator(quint64 request_id, QNetworkReply *reply)
     reply->deleteLater();
 }
 
+quint64 Nax5ApiClient::submitClientEvents(const QString &session_token, const QByteArray &body)
+{
+    return postClientEvents(session_token, body);
+}
+
 quint64 Nax5ApiClient::postClientEvents(const QString &session_token, const QByteArray &body)
+{
+    return postClientEventsAttempt(session_token, body, 0);
+}
+
+quint64 Nax5ApiClient::postClientEventsAttempt(const QString &session_token, const QByteArray &body, int attempt)
 {
     const quint64 request_id = next_request_id++;
     QNetworkReply *reply = sendJson(
@@ -651,7 +664,7 @@ quint64 Nax5ApiClient::postClientEvents(const QString &session_token, const QByt
         session_token);
     if (!reply)
         return request_id;
-    connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {
+    connect(reply, &QNetworkReply::finished, this, [this, request_id, reply, session_token, body, attempt]() {
         if (!completeLive(request_id))
         {
             reply->deleteLater();
@@ -659,7 +672,15 @@ quint64 Nax5ApiClient::postClientEvents(const QString &session_token, const QByt
         }
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (status != 200 && status != 201 && status != 204)
-            qCWarning(nax5Api) << "client-events upload failed" << status;
+            qCWarning(nax5Api) << "client-events upload failed" << status << "attempt" << attempt;
+        const bool retryable = status == 500 || status == 503;
+        if (retryable && attempt < 2)
+        {
+            const int delay_ms = 250 * (1 << attempt);
+            QTimer::singleShot(delay_ms, this, [this, session_token, body, attempt]() {
+                postClientEventsAttempt(session_token, body, attempt + 1);
+            });
+        }
         reply->deleteLater();
     });
     return request_id;
@@ -669,16 +690,17 @@ quint64 Nax5ApiClient::postClientReportArchive(
     const QString &session_token,
     Nax5ClientReportKind kind,
     const QString &session_public_id,
-    const QByteArray &zip_bytes)
+    const QByteArray &zip_bytes,
+    const QString &report_version,
+    const QString &report_sha)
 {
-    abortLane(Nax5ApiLaneReport);
     const quint64 request_id = next_request_id++;
     QString config_error;
     const QUrl base = Nax5ApiConfig::baseUrl(&config_error);
     if (!base.isValid() || zip_bytes.isEmpty())
     {
         qCWarning(nax5Api) << "client-report archive upload skipped";
-        emit clientReportFinished(request_id, 0);
+        QTimer::singleShot(0, this, [this, request_id]() { emit clientReportFinished(request_id, 0); });
         return request_id;
     }
 
@@ -691,8 +713,8 @@ quint64 Nax5ApiClient::postClientReportArchive(
         multi_part->append(part);
     };
     appendField(QStringLiteral("kind"), nax5ClientReportKindName(kind).toUtf8());
-    appendField(QStringLiteral("client_version"), nax5ClientVersion().toUtf8());
-    appendField(QStringLiteral("client_sha"), nax5ClientSha().toUtf8());
+    appendField(QStringLiteral("client_version"), (report_version.isEmpty() ? nax5ClientVersion() : report_version).toUtf8());
+    appendField(QStringLiteral("client_sha"), (report_sha.isEmpty() ? nax5ClientSha() : report_sha).toUtf8());
     if (!session_public_id.isEmpty())
         appendField(QStringLiteral("session_id"), session_public_id.toUtf8());
 
@@ -711,13 +733,14 @@ quint64 Nax5ApiClient::postClientReportArchive(
         request.setRawHeader("X-Session-Token", session_token.toUtf8());
 
     QNetworkReply *reply = network->post(request, multi_part);
-    multi_part->setParent(reply);
     if (!reply)
     {
+        delete multi_part;
         qCWarning(nax5Api) << "client-report archive upload failed" << 0;
-        emit clientReportFinished(request_id, 0);
+        QTimer::singleShot(0, this, [this, request_id]() { emit clientReportFinished(request_id, 0); });
         return request_id;
     }
+    multi_part->setParent(reply);
 
     InFlight item;
     item.request_id = request_id;
@@ -743,7 +766,7 @@ quint64 Nax5ApiClient::postClientReport(const QString &session_token, const QByt
     if (!reply)
     {
         qCWarning(nax5Api) << "client-report upload failed" << 0;
-        emit clientReportFinished(request_id, 0);
+        QTimer::singleShot(0, this, [this, request_id]() { emit clientReportFinished(request_id, 0); });
         return request_id;
     }
     connect(reply, &QNetworkReply::finished, this, [this, request_id, reply]() {

@@ -83,9 +83,15 @@ Product Play requires authenticated user, verified email, and `accessStatus == A
 | Process log | `%AppData%/Roaming/NAX5/NAX5/log/nax5_<timestamp>.log` |
 | Stream log | same dir, `chiaki_session_<timestamp>.log` (last 5 kept) |
 | Manual ZIP | Desktop via `Nax5Session.saveReport()` |
-| Server tail | `POST https://cloudgta6.com/api/v1/client-reports/` when logged in |
+| Automatic report journal | `%AppData%/Roaming/NAX5/NAX5/log/report-queue-v2/`; sanitized, owner-tagged session ZIP parts |
+| Server reports | `POST https://cloudgta6.com/api/v1/client-reports/` after a session, when logged in |
 
-Server stores JSON under backend `CLIENT_REPORTS_DIR` (production: `/var/nax5/client-reports/<user_id>/`). Not full session archives.
+Automatic reports contain the complete sanitized process and stream logs captured
+for that session, split into bounded ZIP parts below the server limit. Every
+journal and part persists the authenticated numeric owner ID; queue selection
+filters by that owner. Parts remain until the server acknowledges them. The reconstruction
+tool and exact field semantics are documented in
+[docs/DIAGNOSTICS-BUILD7.md](docs/DIAGNOSTICS-BUILD7.md).
 
 ## Critical invariants
 

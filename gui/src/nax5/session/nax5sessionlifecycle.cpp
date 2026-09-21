@@ -92,6 +92,11 @@ int nax5ShutdownGraceMs()
     return 400;
 }
 
+int nax5ShutdownReportGraceMs()
+{
+    return 10000;
+}
+
 bool nax5MaySleepConsole(bool operator_mode)
 {
     return operator_mode;

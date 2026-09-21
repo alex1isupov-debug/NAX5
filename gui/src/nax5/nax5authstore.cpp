@@ -13,24 +13,23 @@ constexpr auto kSessionTokenKey = "auth/session_token";
 
 QSettings authSettings()
 {
-    return QSettings(Nax5Runtime::settingsOrganizationName(), Nax5Runtime::settingsApplicationName());
+    return QSettings(QSettings::defaultFormat(), QSettings::UserScope,
+        Nax5Runtime::settingsOrganizationName(), Nax5Runtime::settingsApplicationName());
 }
 
-QString encodeSecret(const QString &value)
+void removeLegacySecrets(QSettings &settings)
 {
-    return QString::fromUtf8(value.toUtf8().toBase64());
-}
-
-QString decodeSecret(const QString &value)
-{
-    return QString::fromUtf8(QByteArray::fromBase64(value.toUtf8()));
+    settings.remove(kPasswordKey);
+    settings.remove(kSessionTokenKey);
 }
 
 } // namespace
 
 bool nax5AuthRememberEnabled()
 {
-    return authSettings().value(kRememberKey, false).toBool();
+    QSettings settings = authSettings();
+    removeLegacySecrets(settings);
+    return settings.value(kRememberKey, false).toBool();
 }
 
 void nax5AuthSetRememberEnabled(bool enabled)
@@ -45,21 +44,26 @@ QString nax5AuthSavedEmail()
 
 QString nax5AuthSavedPassword()
 {
-    return decodeSecret(authSettings().value(kPasswordKey).toString());
+    QSettings settings = authSettings();
+    removeLegacySecrets(settings);
+    return {};
 }
 
 QString nax5AuthSavedSessionToken()
 {
-    return decodeSecret(authSettings().value(kSessionTokenKey).toString());
+    QSettings settings = authSettings();
+    removeLegacySecrets(settings);
+    return {};
 }
 
 void nax5AuthSaveCredentials(const QString &email, const QString &password, const QString &session_token)
 {
+    Q_UNUSED(password);
+    Q_UNUSED(session_token);
     QSettings settings = authSettings();
     settings.setValue(kRememberKey, true);
     settings.setValue(kEmailKey, email.trimmed());
-    settings.setValue(kPasswordKey, encodeSecret(password));
-    settings.setValue(kSessionTokenKey, encodeSecret(session_token));
+    removeLegacySecrets(settings);
 }
 
 void nax5AuthClearCredentials()

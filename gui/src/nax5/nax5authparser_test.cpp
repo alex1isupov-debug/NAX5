@@ -2,10 +2,14 @@
 #include "nax5/nax5autherror.h"
 #include "nax5/nax5authparser.h"
 #include "nax5/nax5authstate.h"
+#include "nax5/nax5authstore.h"
+#include "nax5/nax5runtime.h"
 
 #include <QByteArray>
 #include <QString>
 #include <QUrl>
+#include <QSettings>
+#include <QTemporaryDir>
 #include <QtGlobal>
 #include <cstdio>
 
@@ -219,6 +223,25 @@ static void test_spaces_and_empty_env_are_controlled()
     expect(!parseBase(&error).isValid(), "invalid characters rejected");
 }
 
+static void test_remembered_login_never_persists_secrets()
+{
+    QTemporaryDir dir;
+    expect(dir.isValid(), "auth settings temp dir");
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+    nax5AuthClearCredentials();
+    nax5AuthSaveCredentials(QStringLiteral(" Tester@Example.com "), QStringLiteral("plain-password"),
+        QStringLiteral("session-token"));
+    expect(nax5AuthRememberEnabled(), "remember preference persists");
+    expect(nax5AuthSavedEmail() == QStringLiteral("Tester@Example.com"), "remembered email persists");
+    expect(nax5AuthSavedPassword().isEmpty(), "password is never persisted");
+    expect(nax5AuthSavedSessionToken().isEmpty(), "session token is never persisted");
+    QSettings settings(QSettings::defaultFormat(), QSettings::UserScope,
+        Nax5Runtime::settingsOrganizationName(), Nax5Runtime::settingsApplicationName());
+    expect(!settings.contains(QStringLiteral("auth/password")), "legacy password key removed");
+    expect(!settings.contains(QStringLiteral("auth/session_token")), "legacy token key removed");
+}
+
 int main()
 {
     test_login_success();
@@ -240,6 +263,7 @@ int main()
     test_malformed_url_is_controlled_error();
     test_invalid_env_does_not_fall_back_to_production();
     test_spaces_and_empty_env_are_controlled();
+    test_remembered_login_never_persists_secrets();
     if (g_failed)
     {
         std::fprintf(stderr, "%d NAX5 auth tests failed\n", g_failed);

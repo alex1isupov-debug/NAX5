@@ -29,7 +29,7 @@ QString Nax5Runtime::lastOperatorConsoleCode()
 {
     if (!operatorMode())
         return {};
-    QSettings settings(settingsOrganizationName(), settingsApplicationName());
+    QSettings settings(QSettings::defaultFormat(), QSettings::UserScope, settingsOrganizationName(), settingsApplicationName());
     return settings.value(QStringLiteral("operator/lastConsoleCode")).toString();
 }
 
@@ -37,7 +37,7 @@ void Nax5Runtime::setLastOperatorConsoleCode(const QString &code)
 {
     if (!operatorMode())
         return;
-    QSettings settings(settingsOrganizationName(), settingsApplicationName());
+    QSettings settings(QSettings::defaultFormat(), QSettings::UserScope, settingsOrganizationName(), settingsApplicationName());
     settings.setValue(QStringLiteral("operator/lastConsoleCode"), code.trimmed());
 }
 

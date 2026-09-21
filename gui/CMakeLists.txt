@@ -47,8 +47,12 @@ set(SOURCE_FILES
 	src/nax5/nax5runtime.cpp
 	include/nax5/nax5processlog.h
 	src/nax5/nax5processlog.cpp
+	include/nax5/nax5networkhint.h
+	src/nax5/nax5networkhint.cpp
 	include/nax5/nax5clientreport.h
 	src/nax5/nax5clientreport.cpp
+	include/nax5/nax5reportqueue.h
+	src/nax5/nax5reportqueue.cpp
 	include/nax5/nax5telemetry.h
 	src/nax5/nax5installationid.cpp
 	src/nax5/nax5telemetry.cpp
@@ -101,6 +105,7 @@ set(SOURCE_FILES
 set(RESOURCE_FILES "")
 
 set(NAX5_VERSION "unknown")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/VERSION")
 if(EXISTS "${CMAKE_SOURCE_DIR}/VERSION")
 	file(READ "${CMAKE_SOURCE_DIR}/VERSION" NAX5_VERSION)
 	string(STRIP "${NAX5_VERSION}" NAX5_VERSION)
@@ -187,6 +192,9 @@ if (${Qt6WebEngineQuick_FOUND})
 	target_compile_definitions(chiaki PRIVATE CHIAKI_HAVE_WEBENGINE)
 endif()
 target_link_libraries(chiaki SDL2::SDL2)
+if(WIN32)
+	target_link_libraries(chiaki iphlpapi ws2_32 wlanapi)
+endif()
 if(CHIAKI_ENABLE_SPEEX)
   target_link_libraries(chiaki PkgConfig::SpeexDSP)
   target_compile_definitions(chiaki PRIVATE CHIAKI_GUI_ENABLE_SPEEX)
@@ -234,6 +242,9 @@ install(FILES io.github.streetpea.Chiaki4deck.appdata.xml DESTINATION share/meta
 if(CHIAKI_ENABLE_TESTS)
 	add_executable(nax5-auth-unit
 		src/nax5/nax5apiconfig.cpp
+		src/nax5/nax5runtime.cpp
+		src/nax5/nax5installationid.cpp
+		src/nax5/nax5authstore.cpp
 		src/nax5/nax5autherror.cpp
 		src/nax5/nax5authstate.cpp
 		src/nax5/nax5authparser.cpp
@@ -275,7 +286,9 @@ if(CHIAKI_ENABLE_TESTS)
 		src/nax5/nax5runtime.cpp
 		src/nax5/nax5installationid.cpp
 		src/nax5/nax5processlog.cpp
+		src/nax5/nax5networkhint.cpp
 		src/nax5/nax5clientreport.cpp
+		src/nax5/nax5reportqueue.cpp
 		src/nax5/nax5telemetry.cpp
 		src/nax5/nax5telemetry_test.cpp
 	)
@@ -286,5 +299,8 @@ if(CHIAKI_ENABLE_TESTS)
 		NAX5_CLIENT_SHA="testsha"
 	)
 	target_link_libraries(nax5-telemetry-unit Qt::Core)
+	if(WIN32)
+		target_link_libraries(nax5-telemetry-unit iphlpapi ws2_32 wlanapi)
+	endif()
 	add_test(NAME nax5-telemetry COMMAND nax5-telemetry-unit)
 endif()

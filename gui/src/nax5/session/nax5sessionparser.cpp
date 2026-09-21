@@ -73,6 +73,8 @@ static Nax5SessionError errorFromCode(const QString &code, int http_status)
         return Nax5SessionErrorForbidden;
     if (code == QLatin1String("SESSION_NOT_FOUND"))
         return Nax5SessionErrorNotFound;
+    if (code == QLatin1String("CLIENT_UPDATE_REQUIRED"))
+        return Nax5SessionErrorClientUpdateRequired;
     if (http_status == 401)
         return Nax5SessionErrorUnauthenticated;
     if (http_status == 403)
@@ -123,6 +125,11 @@ static Nax5SessionParseResult parseDomainError(int http_status, const QByteArray
     }
 
     result.error = errorFromCode(root.value(QStringLiteral("code")).toString(), http_status);
+    if (result.error == Nax5SessionErrorClientUpdateRequired)
+    {
+        result.minimum_version = root.value(QStringLiteral("minimumVersion")).toString();
+        result.update_url = root.value(QStringLiteral("updateUrl")).toString();
+    }
     if (result.error == Nax5SessionErrorActiveSessionExists)
         parseAssignment(root, &result);
     return result;

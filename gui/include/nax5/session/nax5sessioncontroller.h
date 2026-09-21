@@ -2,12 +2,18 @@
 
 #include "nax5/connection/nax5connectionmaterial.h"
 #include "nax5/nax5clientreport.h"
+#include "nax5/nax5reportqueue.h"
+#include "nax5/nax5processlog.h"
+#include "nax5/nax5networkhint.h"
 #include "nax5/session/nax5sessionerror.h"
 #include "nax5/session/nax5sessionlifecycle.h"
 #include "nax5/session/nax5sessionstate.h"
 
 #include <chiaki/session.h>
 
+#include <QByteArray>
+#include <QDateTime>
+#include <QElapsedTimer>
 #include <QObject>
 #include <QPointer>
 #include <QString>
@@ -19,6 +25,7 @@ class StreamSession;
 struct Nax5ConnectionParseResult;
 struct Nax5SessionParseResult;
 class QTimer;
+class QThread;
 
 class Nax5SessionController : public QObject
 {
@@ -34,6 +41,8 @@ class Nax5SessionController : public QObject
     Q_PROPERTY(QString consoleCode READ consoleCode NOTIFY assignmentChanged)
     Q_PROPERTY(QString consoleRegion READ consoleRegion NOTIFY assignmentChanged)
     Q_PROPERTY(QString sessionId READ sessionId NOTIFY assignmentChanged)
+    Q_PROPERTY(bool updateRequired READ updateRequired NOTIFY stateChanged)
+    Q_PROPERTY(QString updateUrl READ updateUrl NOTIFY stateChanged)
 
 public:
     explicit Nax5SessionController(Nax5AuthController *auth, QmlBackend *backend, QObject *parent = nullptr);
@@ -53,6 +62,8 @@ public:
     QString consoleCode() const { return console_code; }
     QString consoleRegion() const { return console_region; }
     QString sessionId() const { return session_id; }
+    bool updateRequired() const { return current_error == Nax5SessionErrorClientUpdateRequired; }
+    QString updateUrl() const { return update_url; }
 
     Q_INVOKABLE void play();
     Q_INVOKABLE void release();
@@ -68,6 +79,8 @@ signals:
     void statusTextChanged();
     void errorMessageChanged();
     void assignmentChanged();
+    void diagnosticCaptureRequested(const QString &root, qint64 owner);
+    void diagnosticCaptureFinished(bool ok);
 
 private:
     struct PendingTerminal
@@ -120,22 +133,50 @@ private:
     void finishUnauthLogout();
     void abortReserveAndSyncCurrent();
     void waitForShutdownIo();
+    void waitForShutdownReport();
     void submitClientReport(Nax5ClientReportKind kind);
     void flushPendingClientReport();
+    void onClientReportFinished(quint64 request_id, int http_status);
     void emitTelemetry(const QString &event_type);
+    void flushTelemetry();
+    void sampleStreamStats();
+    void beginDiagnosticReport();
+    void serviceDiagnosticQueue();
+    Nax5BuildInfoSnapshot buildInfoSnapshot();
     bool streamSessionAlive() const;
     quint64 bumpGeneration();
     QString liveToken() const;
 
     QPointer<Nax5AuthController> auth;
     QPointer<QmlBackend> backend;
+    QPointer<StreamSession> diagnostic_stream;
+    Nax5NetworkDiagnostics network_diagnostics;
     Nax5ApiClient *api;
     QTimer *lease_timer;
     QTimer *heartbeat_timer;
     QTimer *reserve_backoff_timer;
+    QTimer *telemetry_flush_timer;
+    QTimer *diagnostic_timer;
+    QTimer *report_queue_timer;
+    QThread *report_worker;
+    bool report_capture_busy = false;
+    QString diagnostic_report_id;
+    QString diagnostic_session_id;
+    qint64 diagnostic_owner = 0;
+    qint64 diagnostic_process_offset = 0;
+    qint64 report_retry_at = 0;
+    int report_retry_count = 0;
+    bool diagnostic_finalized = false;
+    bool diagnostic_stream_connected = false;
+    Nax5QueuedReportPart uploading_part;
+    QElapsedTimer diagnostic_clock;
+    qint64 diagnostic_duration_ms = 0;
+    qint64 diagnostic_last_sample_ms = 0;
     Nax5GameSessionState session_state;
     QString status_text;
     QString error_message;
+    Nax5SessionError current_error = Nax5SessionErrorNone;
+    QString update_url;
     QString console_code;
     QString console_region;
     QString session_id;
@@ -161,5 +202,15 @@ private:
     bool awaiting_abort_current;
     bool pending_start_stream;
     bool unauth_logout_pending;
-    bool client_report_sent_on_shutdown;
+    quint64 client_report_request_id;
+    QString last_decoder;
+    QString last_resolution;
+    QString last_bitrate_kbps;
+    QString last_fps;
+    QDateTime stream_connected_at;
+    double stream_max_packet_loss;
+    double last_avg_packet_loss;
+    int last_frames_lost;
+    qint64 last_measured_bitrate_kbps;
+    int last_dropped_frames;
 };

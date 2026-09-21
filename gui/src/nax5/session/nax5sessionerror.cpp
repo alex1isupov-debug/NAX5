@@ -29,6 +29,8 @@ static QString productMessage(Nax5SessionError error)
     case Nax5SessionErrorConnectionTimeout:
     case Nax5SessionErrorOperatorTestRequired:
         return QStringLiteral("Не удалось подключиться к консоли.");
+    case Nax5SessionErrorClientUpdateRequired:
+        return QStringLiteral("Доступно обязательное обновление NAX5. Установите новую версию, чтобы продолжить игру.");
     case Nax5SessionErrorNone:
         return QString();
     }

@@ -4,6 +4,9 @@
 #include "nax5/session/nax5sessionstate.h"
 
 #include <QByteArray>
+#include <QCoreApplication>
+#include <QSettings>
+#include <QTemporaryDir>
 #include <QString>
 #include <QtGlobal>
 #include <cstdio>
@@ -189,8 +192,13 @@ static void test_vanilla_vs_transient_connect_info_parity()
     expect(parsed.material.morning.size() == Nax5MorningSize, "morning length");
 }
 
-int main()
+int main(int argc, char **argv)
 {
+    QCoreApplication app(argc, argv);
+    QTemporaryDir settings_dir;
+    if (!settings_dir.isValid()) return 1;
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settings_dir.path());
     test_valid_base64_keys();
     test_invalid_base64_and_length();
     test_missing_and_unsupported();

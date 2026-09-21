@@ -27,6 +27,8 @@ struct Nax5SessionParseResult
     bool has_console;
     Nax5SessionInfo session;
     Nax5AssignedConsole console;
+    QString minimum_version;
+    QString update_url;
 
     Nax5SessionParseResult()
         : error(Nax5SessionErrorInvalidResponse)

@@ -45,6 +45,14 @@ Rectangle {
             color: "#c5c5c5"
         }
 
+        Button {
+            visible: Nax5Session.updateRequired
+            enabled: Nax5Session.updateUrl.length > 0
+            text: qsTr("Скачать обязательное обновление")
+            Material.background: Material.accent
+            onClicked: Qt.openUrlExternally(Nax5Session.updateUrl)
+        }
+
         Label {
             visible: !Nax5Session.reserved && Nax5Session.errorMessage.length > 0 && Nax5Session.statusText !== Nax5Session.errorMessage
             Layout.fillWidth: true

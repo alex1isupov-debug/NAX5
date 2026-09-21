@@ -27,6 +27,7 @@ bool nax5AcceptAsync(quint64 live_generation, quint64 event_generation, quint64 
 bool nax5AcceptSessionIdentity(const QString &live_session_id, const QString &event_session_id);
 int nax5TerminalRetryLimit();
 int nax5ShutdownGraceMs();
+int nax5ShutdownReportGraceMs();
 bool nax5MaySleepConsole(bool operator_mode);
 bool nax5MayResumeAfterOsSleep(bool operator_mode);
 bool nax5ShowsChiakiQuitDialog(bool operator_mode);

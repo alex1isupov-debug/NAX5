@@ -11,6 +11,8 @@
 #include "nax5/nax5runtime.h"
 #include "nax5/session/nax5sessionparser.h"
 #include "qmlbackend.h"
+#include "qmlmainwindow.h"
+#include "settings.h"
 #include "streamsession.h"
 
 #include <QCoreApplication>
@@ -18,11 +20,14 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLoggingCategory>
 #include <QTimer>
+#include <QThread>
 #include <QUuid>
+#include <QtGlobal>
 
 Q_LOGGING_CATEGORY(nax5SessionLog, "nax5.session")
 
@@ -30,6 +35,15 @@ namespace {
 constexpr int kHeartbeatIntervalMs = 20 * 1000;
 constexpr int kHeartbeatRetryMs = 5 * 1000;
 constexpr int kNoCapacityBackoffMs = 5 * 1000;
+constexpr int kTelemetryFlushMs = 300;
+constexpr int kTelemetryBatchLimit = 25;
+
+QString boolDecoderName(const QString &hw_decoder)
+{
+    if (hw_decoder.isEmpty() || hw_decoder == QLatin1String("none"))
+        return QStringLiteral("software");
+    return hw_decoder;
+}
 }
 
 Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBackend *backend, QObject *parent)
@@ -40,6 +54,10 @@ Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBacken
     , lease_timer(new QTimer(this))
     , heartbeat_timer(new QTimer(this))
     , reserve_backoff_timer(new QTimer(this))
+    , telemetry_flush_timer(new QTimer(this))
+    , diagnostic_timer(new QTimer(this))
+    , report_queue_timer(new QTimer(this))
+    , report_worker(new QThread(this))
     , session_state(Nax5GameSessionStateIdle)
     , generation(0)
     , stream_generation(0)
@@ -59,7 +77,12 @@ Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBacken
     , awaiting_abort_current(false)
     , pending_start_stream(false)
     , unauth_logout_pending(false)
-    , client_report_sent_on_shutdown(false)
+    , client_report_request_id(0)
+    , stream_max_packet_loss(0)
+    , last_avg_packet_loss(0)
+    , last_frames_lost(0)
+    , last_measured_bitrate_kbps(-1)
+    , last_dropped_frames(0)
 {
     pending_terminal.mutation = Nax5TerminalMutationNone;
     pending_terminal.generation = 0;
@@ -72,6 +95,27 @@ Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBacken
     connect(heartbeat_timer, &QTimer::timeout, this, &Nax5SessionController::sendHeartbeat);
     reserve_backoff_timer->setSingleShot(true);
     connect(reserve_backoff_timer, &QTimer::timeout, this, &Nax5SessionController::stateChanged);
+    telemetry_flush_timer->setSingleShot(true);
+    telemetry_flush_timer->setInterval(kTelemetryFlushMs);
+    connect(telemetry_flush_timer, &QTimer::timeout, this, &Nax5SessionController::flushTelemetry);
+    diagnostic_timer->setInterval(2000);
+    connect(diagnostic_timer, &QTimer::timeout, this, &Nax5SessionController::sampleStreamStats);
+    report_queue_timer->setInterval(1000);
+    connect(report_queue_timer, &QTimer::timeout, this, &Nax5SessionController::serviceDiagnosticQueue);
+    report_queue_timer->start();
+    auto *collector = new QObject;
+    collector->moveToThread(report_worker);
+    connect(report_worker, &QThread::finished, collector, &QObject::deleteLater);
+    connect(this, &Nax5SessionController::diagnosticCaptureRequested, collector,
+        [this](const QString &root, qint64 owner) {
+            emit diagnosticCaptureFinished(nax5CaptureReports(root, owner, 4));
+        });
+    connect(this, &Nax5SessionController::diagnosticCaptureFinished, this, [this](bool ok) {
+        report_capture_busy = false;
+        if (!ok) qCWarning(nax5SessionLog) << "diagnostic capture delayed: check disk space or source log";
+        flushPendingClientReport();
+    });
+    report_worker->start(QThread::LowPriority);
     connect(api, &Nax5ApiClient::reserveFinished, this, &Nax5SessionController::onReserveFinished);
     connect(api, &Nax5ApiClient::currentFinished, this, &Nax5SessionController::onCurrentFinished);
     connect(api, &Nax5ApiClient::cancelFinished, this, &Nax5SessionController::onCancelFinished);
@@ -80,6 +124,7 @@ Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBacken
     connect(api, &Nax5ApiClient::heartbeatFinished, this, &Nax5SessionController::onHeartbeatFinished);
     connect(api, &Nax5ApiClient::failFinished, this, &Nax5SessionController::onFailFinished);
     connect(api, &Nax5ApiClient::endFinished, this, &Nax5SessionController::onEndFinished);
+    connect(api, &Nax5ApiClient::clientReportFinished, this, &Nax5SessionController::onClientReportFinished);
     connect(api, &Nax5ApiClient::operatorFinished, this, [this](quint64 request_id, const Nax5ConnectionParseResult &result) {
         if (request_id == operator_request_id)
             operator_request_id = 0;
@@ -117,6 +162,10 @@ Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBacken
 
 Nax5SessionController::~Nax5SessionController()
 {
+    network_diagnostics.stop();
+    report_queue_timer->stop();
+    report_worker->quit();
+    report_worker->wait();
     disconnect(qApp, &QCoreApplication::aboutToQuit, this, &Nax5SessionController::prepareShutdown);
     ignore_cancel_result = true;
     pending_terminal.mutation = Nax5TerminalMutationNone;
@@ -125,6 +174,8 @@ Nax5SessionController::~Nax5SessionController()
 
 bool Nax5SessionController::playEnabled() const
 {
+    if (shutdown_started) return false;
+    if (updateRequired()) return false;
     if (!auth || !nax5PlayEligibilityOk(auth->authenticated(), auth->emailVerified(), auth->accessStatus()))
         return false;
     if (!nax5SessionCanStartPlay(session_state))
@@ -179,6 +230,9 @@ void Nax5SessionController::setStatusText(const QString &text)
 
 void Nax5SessionController::setError(Nax5SessionError error)
 {
+    current_error = error;
+    if (error != Nax5SessionErrorClientUpdateRequired)
+        update_url.clear();
     const QString message = errorText(error);
     if (error_message == message)
         return;
@@ -219,6 +273,7 @@ void Nax5SessionController::applyAssignment(const Nax5SessionParseResult &result
     session_id = result.session.id;
     console_code = result.console.code;
     console_region = result.console.region;
+    beginDiagnosticReport();
     emit assignmentChanged();
     scheduleLeaseSync(result.session.lease_expires_at);
 }
@@ -302,10 +357,22 @@ void Nax5SessionController::onAuthStateChanged()
     emit stateChanged();
     if (auth && auth->authenticated())
     {
+        shutdown_started = false;
+        report_retry_at = 0;
+        report_retry_count = 0;
+        if (diagnostic_owner != auth->userId())
+        {
+            diagnostic_report_id.clear();
+            diagnostic_session_id.clear();
+            diagnostic_finalized = false;
+            diagnostic_process_offset = QFileInfo(nax5ProcessLogPath()).size();
+        }
+        nax5RecoverReports(nax5ReportQueueRoot(), auth->userId(), diagnostic_report_id);
         flushPendingClientReport();
         syncCurrent();
         return;
     }
+    diagnostic_timer->stop();
     resetLocal();
 }
 
@@ -313,10 +380,125 @@ void Nax5SessionController::emitTelemetry(const QString &event_type)
 {
     if (!auth || liveToken().isEmpty())
         return;
-    const QByteArray body = nax5BuildClientEventBatch(event_type, session_id);
-    if (nax5ClientEventPayloadContainsSecrets(body))
+    nax5QueueClientEvent(event_type, session_id);
+    if (nax5QueuedClientEventCount() >= kTelemetryBatchLimit)
+        flushTelemetry();
+    else
+        telemetry_flush_timer->start();
+}
+
+void Nax5SessionController::flushTelemetry()
+{
+    telemetry_flush_timer->stop();
+    const QString token = liveToken();
+    if (token.isEmpty())
         return;
-    api->postClientEvents(liveToken(), body);
+    nax5FlushClientEvents(token, api);
+}
+
+void Nax5SessionController::sampleStreamStats()
+{
+    if (!backend) return;
+    StreamSession *session = backend->qmlSession();
+    if (!session) session = qobject_cast<StreamSession *>(sender());
+    if (!session) return;
+    last_avg_packet_loss = session->GetAveragePacketLoss();
+    if (last_avg_packet_loss > stream_max_packet_loss)
+        stream_max_packet_loss = last_avg_packet_loss;
+    last_frames_lost = session->GetFramesLost();
+    last_measured_bitrate_kbps = qRound(session->GetMeasuredBitrate() * 1000.0);
+    if (backend->qmlWindow())
+        last_dropped_frames = qMax(0, backend->qmlWindow()->droppedFrames());
+    if (diagnostic_clock.isValid())
+    {
+        diagnostic_duration_ms = diagnostic_clock.elapsed();
+        const qint64 gap = diagnostic_duration_ms - diagnostic_last_sample_ms;
+        diagnostic_last_sample_ms = diagnostic_duration_ms;
+        QJsonObject metric{{"schema", 2}, {"event", "stream_sample"},
+            {"session_id", diagnostic_session_id},
+            {"utc", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+            {"elapsed_ms", double(diagnostic_duration_ms)}, {"sample_gap_ms", double(gap)},
+            {"packet_loss_rolling_fraction", last_avg_packet_loss},
+            {"frames_lost_total", last_frames_lost}, {"render_dropped_recent_1s", last_dropped_frames},
+            {"measured_bitrate_kbps", double(last_measured_bitrate_kbps)}};
+        metric.insert("ps5_path_rtt_ms", session->GetInitialRttUs() / 1000.0);
+        metric.insert("ps5_path_mtu_in", double(session->GetMtuIn()));
+        metric.insert("ps5_path_mtu_out", double(session->GetMtuOut()));
+        if (backend->qmlWindow())
+        {
+            metric.insert("render_queue_depth_ema", backend->qmlWindow()->queueDepthAverage());
+            metric.insert("pending_frame_age_ms", 1000.0 * backend->qmlWindow()->pendingFrameAge());
+            metric.insert("renderer_backend_enum", backend->qmlWindow()->runtimeRendererBackend());
+        }
+        nax5ProcessLogWrite("nax5.metrics", QString::fromUtf8(QJsonDocument(metric).toJson(QJsonDocument::Compact)));
+    }
+}
+
+Nax5BuildInfoSnapshot Nax5SessionController::buildInfoSnapshot()
+{
+    Nax5BuildInfoSnapshot snapshot;
+    Settings *settings = backend ? backend->chiakiSettings() : nullptr;
+    if (settings)
+    {
+        snapshot.decoder = last_decoder.isEmpty() ? boolDecoderName(settings->GetHardwareDecoder()) : last_decoder;
+        const ChiakiConnectVideoProfile profile = settings->GetVideoProfileRemotePS5();
+        snapshot.resolution = last_resolution.isEmpty()
+            ? QStringLiteral("%1x%2").arg(profile.width).arg(profile.height)
+            : last_resolution;
+        snapshot.bitrate_kbps = last_bitrate_kbps.isEmpty() && profile.bitrate
+            ? QString::number(profile.bitrate)
+            : last_bitrate_kbps;
+        snapshot.fps = last_fps.isEmpty() && profile.max_fps
+            ? QString::number(profile.max_fps)
+            : last_fps;
+        snapshot.show_stream_stats = settings->GetShowStreamStats();
+        snapshot.log_verbose = settings->GetLogVerbose();
+        snapshot.log_sanitize = !Nax5Runtime::operatorMode() || settings->GetLogSanitize();
+    }
+    else
+    {
+        snapshot.decoder = last_decoder;
+        snapshot.resolution = last_resolution;
+        snapshot.bitrate_kbps = last_bitrate_kbps;
+        snapshot.fps = last_fps;
+    }
+
+    const bool live = streamSessionAlive();
+    snapshot.stream_connected = diagnostic_stream_connected;
+    if (live || stream_connected_at.isValid() || last_dropped_frames > 0 || last_frames_lost > 0)
+    {
+        snapshot.has_stream_stats = true;
+        snapshot.avg_packet_loss = last_avg_packet_loss;
+        if (stream_max_packet_loss > 0)
+            snapshot.max_packet_loss = QString::number(stream_max_packet_loss, 'f', 6);
+        snapshot.dropped_frames = last_dropped_frames;
+        snapshot.frames_lost = last_frames_lost;
+        snapshot.measured_bitrate_kbps = last_measured_bitrate_kbps;
+    }
+    if (stream_connected_at.isValid())
+        snapshot.session_duration_sec = diagnostic_duration_ms / 1000;
+    if (live)
+        snapshot.stream_connected = backend->qmlSession()->GetConnected() || diagnostic_stream_connected;
+    StreamSession *stream = backend ? backend->qmlSession() : nullptr;
+    if (!stream && diagnostic_stream)
+        stream = diagnostic_stream.data();
+    if (stream)
+    {
+        snapshot.ps5_path_rtt_us = static_cast<qint64>(stream->GetInitialRttUs());
+        snapshot.ps5_path_mtu_in = stream->GetMtuIn();
+        snapshot.ps5_path_mtu_out = stream->GetMtuOut();
+    }
+    const Nax5NetworkDiagnosticsSummary network = network_diagnostics.summary();
+    snapshot.gateway_probe_sent = network.probes_sent;
+    snapshot.gateway_probe_replies = network.probe_replies;
+    snapshot.gateway_rtt_avg_ms = network.probe_replies > 0
+        ? network.rtt_sum_ms / double(network.probe_replies) : -1;
+    snapshot.interface_rx_errors_delta = network.rx_errors_delta;
+    snapshot.interface_tx_errors_delta = network.tx_errors_delta;
+    snapshot.interface_rx_discards_delta = network.rx_discards_delta;
+    snapshot.interface_tx_discards_delta = network.tx_discards_delta;
+    snapshot.network_route_changes = network.route_changes;
+    return snapshot;
 }
 
 void Nax5SessionController::play()
@@ -330,9 +512,34 @@ void Nax5SessionController::play()
     if (streamSessionAlive())
         return;
 
+    if (!diagnostic_report_id.isEmpty() && !diagnostic_finalized)
+        submitClientReport(Nax5ClientReportKindQuit);
+    if (auth && auth->userId() > 0)
+        nax5RecoverReports(nax5ReportQueueRoot(), auth->userId());
+    diagnostic_report_id.clear();
+    diagnostic_session_id.clear();
+    diagnostic_finalized = false;
+    diagnostic_stream_connected = false;
+    diagnostic_owner = auth ? auth->userId() : 0;
+    diagnostic_process_offset = QFileInfo(nax5ProcessLogPath()).size();
+    diagnostic_timer->stop();
+    network_diagnostics.stop();
+    diagnostic_clock.invalidate();
+    diagnostic_duration_ms = 0;
+    diagnostic_last_sample_ms = 0;
+    last_decoder.clear();
+    last_resolution.clear();
+    last_bitrate_kbps.clear();
+    last_fps.clear();
     bumpGeneration();
     idempotency_key = QUuid::createUuid().toString(QUuid::WithoutBraces);
     ignore_cancel_result = false;
+    stream_connected_at = QDateTime();
+    stream_max_packet_loss = 0;
+    last_avg_packet_loss = 0;
+    last_frames_lost = 0;
+    last_measured_bitrate_kbps = -1;
+    last_dropped_frames = 0;
     setError(Nax5SessionErrorNone);
     setStatusText(QStringLiteral("Ищем свободную консоль..."));
     setState(nax5SessionReduce(session_state, Nax5GameSessionActionPlayClicked));
@@ -407,6 +614,31 @@ void Nax5SessionController::waitForShutdownIo()
         timer.start(remaining > 0 ? remaining : 1);
         loop.exec();
     }
+}
+
+void Nax5SessionController::waitForShutdownReport()
+{
+    QElapsedTimer elapsed;
+    elapsed.start();
+    const int budget = nax5ShutdownReportGraceMs();
+    while (elapsed.elapsed() < budget)
+    {
+        if (!report_capture_busy && client_report_request_id == 0
+            && (!auth || !nax5ReportQueueHasWork(nax5ReportQueueRoot(), auth->userId()))) break;
+        serviceDiagnosticQueue();
+        if (!report_capture_busy && client_report_request_id == 0 && !api->hasLane(Nax5ApiLaneReport))
+            break;
+        QEventLoop loop;
+        QTimer timer;
+        timer.setSingleShot(true);
+        QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+        QObject::connect(api, &Nax5ApiClient::clientReportFinished, &loop, &QEventLoop::quit);
+        QObject::connect(this, &Nax5SessionController::diagnosticCaptureFinished, &loop, &QEventLoop::quit);
+        const int remaining = budget - static_cast<int>(elapsed.elapsed());
+        timer.start(remaining > 0 ? remaining : 1);
+        loop.exec();
+    }
+    // Every upload already has a durable copy. Never rebuild from newer logs here.
 }
 
 void Nax5SessionController::dispatchTerminal(Nax5TerminalMutation mutation, bool silent)
@@ -538,24 +770,38 @@ void Nax5SessionController::prepareShutdown()
         return;
     shutdown_started = true;
     ignore_cancel_result = true;
+    flushTelemetry();
     if (nax5ShutdownNeedsCurrentSync(session_state))
     {
         abortReserveAndSyncCurrent();
         waitForShutdownIo();
         submitClientReport(Nax5ClientReportKindQuit);
+        waitForShutdownReport();
         bumpGeneration();
         return;
     }
     const Nax5TerminalMutation mutation = nax5ShutdownMutation(session_state, stream_was_connected);
-    if (mutation == Nax5TerminalMutationNone || session_id.isEmpty() || liveToken().isEmpty())
+    if (mutation != Nax5TerminalMutationNone && !session_id.isEmpty() && !liveToken().isEmpty())
+        dispatchTerminal(mutation, true);
+    if (streamSessionAlive())
     {
-        submitClientReport(Nax5ClientReportKindQuit);
-        bumpGeneration();
-        return;
+        pending_start_stream = false;
+        setState(Nax5GameSessionStateEnding);
+        QEventLoop loop;
+        QTimer timeout;
+        timeout.setSingleShot(true);
+        connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+        connect(backend, &QmlBackend::sessionChanged, &loop, [&loop](StreamSession *session) {
+            if (!session) loop.quit();
+        });
+        backend->stopSession(false);
+        if (streamSessionAlive()) { timeout.start(2000); loop.exec(); }
+        if (diagnostic_stream)
+            QCoreApplication::sendPostedEvents(diagnostic_stream.data(), QEvent::DeferredDelete);
     }
-    dispatchTerminal(mutation, true);
     waitForShutdownIo();
     submitClientReport(Nax5ClientReportKindQuit);
+    waitForShutdownReport();
     bumpGeneration();
     reserve_request_id = 0;
     current_request_id = 0;
@@ -565,7 +811,6 @@ void Nax5SessionController::prepareShutdown()
 
 void Nax5SessionController::releaseAndLogout()
 {
-    submitClientReport(Nax5ClientReportKindLogout);
     prepareShutdown();
     resetLocal();
     if (auth)
@@ -574,7 +819,8 @@ void Nax5SessionController::releaseAndLogout()
 
 void Nax5SessionController::saveReport()
 {
-    const QString zip_path = nax5WriteClientReportZip();
+    sampleStreamStats();
+    const QString zip_path = nax5WriteClientReportZip(buildInfoSnapshot());
     if (!zip_path.isEmpty())
         setStatusText(QStringLiteral("Отчёт сохранён на рабочий стол"));
     if (auth && auth->authenticated() && !liveToken().isEmpty())
@@ -583,46 +829,87 @@ void Nax5SessionController::saveReport()
 
 void Nax5SessionController::flushPendingClientReport()
 {
-    const QString pending_path = nax5PendingClientReportPath();
-    if (pending_path.isEmpty() || !QFile::exists(pending_path))
+    if (!auth || !auth->authenticated() || liveToken().isEmpty()
+        || client_report_request_id != 0 || api->hasLane(Nax5ApiLaneReport)
+        || QDateTime::currentMSecsSinceEpoch() < report_retry_at)
         return;
-    const QString token = liveToken();
-    if (token.isEmpty())
-        return;
-    QFile pending_file(pending_path);
-    if (!pending_file.open(QIODevice::ReadOnly))
-        return;
-    const QByteArray zip_bytes = pending_file.readAll();
-    pending_file.close();
-    if (zip_bytes.isEmpty())
-        return;
-    api->postClientReportArchive(token, Nax5ClientReportKindCrash, session_id, zip_bytes);
-    nax5ClearPendingClientReport();
+    // Sending full logs must not compete with reservation, handshake, or gameplay.
+    if ((!diagnostic_report_id.isEmpty() && !diagnostic_finalized) || streamSessionAlive()) return;
+    uploading_part = nax5NextReportPart(nax5ReportQueueRoot(), auth->userId());
+    if (uploading_part.path.isEmpty()) return;
+    client_report_request_id = api->postClientReportArchive(liveToken(),
+        nax5ClientReportKindFromName(uploading_part.kind), uploading_part.session_id, uploading_part.archive,
+        uploading_part.client_version, uploading_part.client_sha);
+}
+
+void Nax5SessionController::onClientReportFinished(quint64 request_id, int http_status)
+{
+    if (request_id == 0 || request_id != client_report_request_id) return;
+    client_report_request_id = 0;
+    const bool ok = http_status == 200 || http_status == 201 || http_status == 204;
+    if (ok)
+    {
+        if (!nax5AcknowledgeReportPart(uploading_part))
+            qCWarning(nax5SessionLog) << "report acknowledgement could not be persisted";
+        report_retry_count = 0;
+        report_retry_at = 0;
+    }
+    else
+    {
+        report_retry_count = qMin(report_retry_count + 1, 6);
+        const int delay = (http_status == 400 || http_status == 401 || http_status == 403 || http_status == 413)
+            ? 300000 : qMin(300000, 5000 * (1 << report_retry_count));
+        report_retry_at = QDateTime::currentMSecsSinceEpoch() + delay;
+        qCWarning(nax5SessionLog) << "report part retained for retry" << http_status << "delay_ms" << delay;
+    }
+    uploading_part = {};
+    if (ok) QTimer::singleShot(0, this, &Nax5SessionController::serviceDiagnosticQueue);
+}
+
+void Nax5SessionController::beginDiagnosticReport()
+{
+    if (!diagnostic_report_id.isEmpty() || !auth || auth->userId() <= 0) return;
+    diagnostic_owner = auth->userId();
+    diagnostic_session_id = session_id;
+    diagnostic_report_id = nax5BeginReport(nax5ReportQueueRoot(), diagnostic_owner,
+        diagnostic_session_id, nax5BuildInfoText(buildInfoSnapshot()),
+        {{nax5ProcessLogPath(), diagnostic_process_offset}});
+    if (diagnostic_report_id.isEmpty())
+        qCWarning(nax5SessionLog) << "cannot create durable diagnostic journal";
+}
+
+void Nax5SessionController::serviceDiagnosticQueue()
+{
+    if (!auth || !auth->authenticated()) return;
+    if (!report_capture_busy)
+    {
+        report_capture_busy = true;
+        emit diagnosticCaptureRequested(nax5ReportQueueRoot(), auth->userId());
+    }
+    if (!report_capture_busy) flushPendingClientReport();
 }
 
 void Nax5SessionController::submitClientReport(Nax5ClientReportKind kind)
 {
-    if (kind == Nax5ClientReportKindQuit && client_report_sent_on_shutdown)
-        return;
-    if (kind == Nax5ClientReportKindQuit || kind == Nax5ClientReportKindLogout)
-        client_report_sent_on_shutdown = true;
-    const QString token = liveToken();
-    if (token.isEmpty())
+    flushTelemetry();
+    if (kind == Nax5ClientReportKindManual && streamSessionAlive())
     {
-        if (kind == Nax5ClientReportKindCrash || kind == Nax5ClientReportKindError)
-            nax5WritePendingClientReportZip(kind);
+        serviceDiagnosticQueue(); // Manual export must not stop the active capture.
         return;
     }
-    if (kind != Nax5ClientReportKindLogout)
-    {
-        const QByteArray zip_bytes = nax5BuildClientReportZipBytes(kind);
-        if (!zip_bytes.isEmpty())
-        {
-            api->postClientReportArchive(token, kind, session_id, zip_bytes);
-            return;
-        }
-    }
-    api->postClientReport(token, nax5BuildClientReportJson(kind, session_id));
+    // The transport may still be shutting down after the terminal API reply.
+    if (streamSessionAlive()) return;
+    if (diagnostic_finalized) { serviceDiagnosticQueue(); return; }
+    beginDiagnosticReport();
+    if (diagnostic_report_id.isEmpty()) return;
+    sampleStreamStats();
+    diagnostic_timer->stop();
+    diagnostic_clock.invalidate();
+    diagnostic_finalized = nax5FinishReport(nax5ReportQueueRoot(), diagnostic_report_id,
+        nax5ClientReportKindName(kind), nax5BuildInfoText(buildInfoSnapshot()));
+    if (!diagnostic_finalized)
+        qCWarning(nax5SessionLog) << "cannot finalize diagnostic journal; original logs retained";
+    serviceDiagnosticQueue();
 }
 
 void Nax5SessionController::fetchConnection()
@@ -672,7 +959,16 @@ void Nax5SessionController::startStream()
                                    << nax5WakeupHostKindName(wakeup.host);
         }
     }
+    // Product diagnostics are always sanitized, independently of operator preferences.
+    if (!Nax5Runtime::operatorMode()) info.log_sanitize = true;
+    beginDiagnosticReport();
+    if (!nax5AddReportSource(nax5ReportQueueRoot(), diagnostic_report_id, info.log_file))
+        qCWarning(nax5SessionLog) << "cannot attach stream log to diagnostic journal";
     backend->createSession(info);
+    last_decoder = boolDecoderName(info.hw_decoder);
+    last_resolution = QStringLiteral("%1x%2").arg(info.video_profile.width).arg(info.video_profile.height);
+    last_bitrate_kbps = info.video_profile.bitrate ? QString::number(info.video_profile.bitrate) : QString();
+    last_fps = info.video_profile.max_fps ? QString::number(info.video_profile.max_fps) : QString();
 }
 
 void Nax5SessionController::onReserveFinished(quint64 request_id, const Nax5SessionParseResult &result)
@@ -706,6 +1002,7 @@ void Nax5SessionController::onReserveFinished(quint64 request_id, const Nax5Sess
 
     idempotency_key.clear();
     clearAssignment();
+    update_url = result.update_url;
     setError(result.error);
         if (result.error == Nax5SessionErrorNoCapacity || result.error == Nax5SessionErrorUserNotEligible || result.error == Nax5SessionErrorUnauthenticated)
     {
@@ -872,6 +1169,7 @@ void Nax5SessionController::onChiakiSessionChanged(StreamSession *session)
             startStream();
         return;
     }
+    diagnostic_stream = session;
     connect(session, &StreamSession::ConnectedChanged, this, &Nax5SessionController::onStreamTransportConnected, Qt::UniqueConnection);
     connect(session, &StreamSession::FfmpegFrameAvailable, this, &Nax5SessionController::onStreamFirstFrame,
             static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::UniqueConnection));
@@ -903,6 +1201,12 @@ void Nax5SessionController::onStreamFirstFrame()
         return;
     stream_first_frame_seen = true;
     stream_was_connected = true;
+    diagnostic_stream_connected = true;
+    stream_connected_at = QDateTime::currentDateTime();
+    diagnostic_clock.start();
+    network_diagnostics.start(diagnostic_session_id);
+    diagnostic_timer->start();
+    sampleStreamStats();
     qCInfo(nax5SessionLog) << "first decoded frame, posting connected";
     setState(nax5SessionReduce(session_state, Nax5GameSessionActionStreamConnected));
     setStatusText(QStringLiteral("Игра"));
@@ -937,6 +1241,7 @@ void Nax5SessionController::onHeartbeatFinished(quint64 request_id, const Nax5Se
         return;
     if (session_state != Nax5GameSessionStateActive)
         return;
+    sampleStreamStats();
     scheduleHeartbeat(result.error == Nax5SessionErrorNone ? kHeartbeatIntervalMs : kHeartbeatRetryMs);
 }
 
@@ -959,6 +1264,22 @@ static Nax5SessionError errorFromQuitReason(ChiakiQuitReason reason)
 void Nax5SessionController::onStreamQuit(ChiakiQuitReason reason, const QString &reason_str)
 {
     Q_UNUSED(reason_str);
+    if (sender() && diagnostic_stream && sender() != diagnostic_stream.data()) return;
+    network_diagnostics.stop();
+    sampleStreamStats();
+    if (diagnostic_clock.isValid()) diagnostic_duration_ms = diagnostic_clock.elapsed();
+    diagnostic_clock.invalidate();
+    diagnostic_timer->stop();
+    // Capture independently of /end/ acknowledgement and generation changes.
+    // Delay one event-loop turn so upstream's deleteLater can flush its final log lines.
+    const QString report_id = diagnostic_report_id;
+    const QPointer<StreamSession> finished_stream = diagnostic_stream;
+    QTimer::singleShot(0, this, [this, reason, report_id, finished_stream]() {
+        if (diagnostic_report_id != report_id) return;
+        if (finished_stream && !streamSessionAlive())
+            QCoreApplication::sendPostedEvents(finished_stream.data(), QEvent::DeferredDelete);
+        submitClientReport(chiaki_quit_reason_is_error(reason) ? Nax5ClientReportKindError : Nax5ClientReportKindQuit);
+    });
     if (stream_generation != generation)
         return;
     if (unauth_logout_pending)
@@ -966,6 +1287,7 @@ void Nax5SessionController::onStreamQuit(ChiakiQuitReason reason, const QString 
     pending_start_stream = false;
     heartbeat_timer->stop();
     heartbeat_request_id = 0;
+    sampleStreamStats();
     const bool connected_this_play = stream_was_connected;
     const bool handshake_timeout = errorFromQuitReason(reason) == Nax5SessionErrorConnectionTimeout;
     qCInfo(nax5SessionLog) << "stream quit"

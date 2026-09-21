@@ -162,10 +162,12 @@ check(sys.argv[1], 'NAX5.exe')
 check(sys.argv[2], 'NAX5-windows-installer.exe')
 PY
 
-if [[ -n "${POWERSHELL_BIN:-}" ]]; then
+if [[ -n "${POWERSHELL_BIN:-}" && "${NAX5_SKIP_LAUNCH_SMOKE:-0}" != "1" ]]; then
   "$POWERSHELL_BIN" -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$ROOT/scripts/release/verify-clean-windows-launch.ps1")" \
     -BundleDir "$(cygpath -w "$USER_DIR")" \
     -InstallerExe "$(cygpath -w "$INSTALLER")"
+else
+  echo "CLEAN_LAUNCH_NOT_TESTED: launch smoke skipped; do not mark this artifact release-verified"
 fi
 
 INSTALLER_SIZE="$(wc -c < "$INSTALLER" | tr -d '[:space:]')"

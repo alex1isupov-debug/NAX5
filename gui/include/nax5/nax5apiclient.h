@@ -42,8 +42,11 @@ public:
         const QString &session_token,
         Nax5ClientReportKind kind,
         const QString &session_public_id,
-        const QByteArray &zip_bytes);
+        const QByteArray &zip_bytes,
+        const QString &report_version = QString(),
+        const QString &report_sha = QString());
     quint64 postClientEvents(const QString &session_token, const QByteArray &body);
+    Q_INVOKABLE quint64 submitClientEvents(const QString &session_token, const QByteArray &body);
     void abortLane(Nax5ApiLane lane);
     void abortAll();
     bool hasLane(Nax5ApiLane lane) const;
@@ -88,6 +91,7 @@ private:
     Nax5SessionParseResult finishSessionNetwork(QNetworkReply *reply, bool *used_body);
     bool completeLive(quint64 request_id);
     void abortInFlight(InFlight &item);
+    quint64 postClientEventsAttempt(const QString &session_token, const QByteArray &body, int attempt);
     static bool isNoNetwork(QNetworkReply *reply);
 
     QNetworkAccessManager *network;

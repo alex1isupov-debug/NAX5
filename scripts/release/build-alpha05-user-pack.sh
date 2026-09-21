@@ -159,7 +159,8 @@ cp -f "$ROOT/scripts/release/README-USER-alpha05.txt" "$USER_DIR/README-USER.txt
   echo "launch: NAX5.exe (Inno Setup installer) -> chiaki.exe"
   echo "launcher: ${LAUNCHER_EXE##*/}"
   echo "installer: ${INSTALLER##*/}"
-  echo "unit tests: nax5-auth-unit, nax5-session-unit, nax5-connection-unit passed"
+  echo "unit tests: nax5-auth-unit, nax5-session-unit, nax5-connection-unit, nax5-telemetry-unit passed"
+  echo "clean launch smoke skipped: ${NAX5_SKIP_LAUNCH_SMOKE:-0}"
   echo "features: login, reserve, auto Remote Play, process log, client-reports, session hardening, first-frame replay tracking"
 } > "$USER_DIR/BUILD-INFO.txt"
 

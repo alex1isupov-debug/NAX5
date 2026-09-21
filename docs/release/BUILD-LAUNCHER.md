@@ -63,6 +63,11 @@ bash scripts/release/package-alpha05-only.sh
 5. собирает Inno installer и `NAX5-windows.zip`;
 6. запускает `verify-clean-windows-launch.ps1` (PATH без MSYS2, silent install).
 
+Для диагностической RC-сборки без запуска GUI можно явно задать
+`NAX5_SKIP_LAUNCH_SMOKE=1`. Скрипт напечатает `CLEAN_LAUNCH_NOT_TESTED`; такой
+артефакт нельзя считать release-verified, пока smoke test не выполнен отдельно
+на чистом Windows-профиле.
+
 ## Проверка результата
 
 ```bash
