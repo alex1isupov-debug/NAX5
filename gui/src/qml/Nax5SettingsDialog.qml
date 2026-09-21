@@ -18,11 +18,8 @@ DialogView {
             contentWidth: availableWidth
 
         ColumnLayout {
-            width: parent.availableWidth
-            leftPadding: 24
-            rightPadding: 24
-            topPadding: 24
-            bottomPadding: 24
+            width: Math.max(0, dialog.width - 48)
+            x: 24
             spacing: 16
 
             Label {

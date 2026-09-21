@@ -83,8 +83,10 @@ static QtMessageHandler qt_msg_handler = nullptr;
 
 static void msg_handler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
-    if (context.category && QLatin1String(context.category).startsWith(QLatin1String("nax5")))
-        nax5ProcessLogWrite(context.category, msg);
+    const char *category = context.category ? context.category : "qt";
+    if (QLatin1String(category).startsWith(QLatin1String("nax5"))
+        || type == QtWarningMsg || type == QtCriticalMsg || type == QtFatalMsg)
+        nax5ProcessLogWrite(category, msg);
     QMutexLocker lock(&chiaki_log_mutex);
     if (!chiaki_log_ctx) {
         qt_msg_handler(type, context, msg);
