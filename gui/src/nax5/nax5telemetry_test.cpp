@@ -3,6 +3,8 @@
 #include "nax5/nax5clientreport.h"
 #include "nax5/nax5processlog.h"
 #include "nax5/nax5reportqueue.h"
+#include "nax5/nax5pathprobe.h"
+#include "nax5/nax5streamhealth.h"
 
 #include <QByteArray>
 #include <QCoreApplication>
@@ -19,6 +21,13 @@
 #include <QRegularExpression>
 #include <QString>
 #include <QtGlobal>
+#include <QElapsedTimer>
+#include <QEventLoop>
+#include <QHostAddress>
+#include <QSet>
+#include <QTimer>
+#include <QUdpSocket>
+#include <cmath>
 #include <cstdio>
 
 static QString test_log_dir;
@@ -340,6 +349,157 @@ static void test_live_report_queue_batches_small_appends()
         "short live session creates bounded multipart count");
 }
 
+static bool near(double a, double b) { return std::abs(a - b) < 1e-6; }
+
+static void test_path_summary()
+{
+    const Nax5PathWindow w = nax5SummarizePath({10, 12, 11, 50}, 5, 1);
+    expect(w.sent == 5 && w.received == 4 && w.lost == 1, "path summary counts");
+    expect(near(w.rtt_p50_ms, 11) && near(w.rtt_p95_ms, 50) && near(w.rtt_max_ms, 50), "path summary percentiles");
+    expect(near(w.jitter_ms, 14), "path summary jitter is mean consecutive delta");
+    const Nax5PathWindow empty = nax5SummarizePath({}, 3, 3);
+    expect(empty.rtt_p50_ms < 0 && empty.jitter_ms < 0 && empty.lost == 3, "path summary with no replies");
+}
+
+// Mirror of ALLOWED_METADATA_KEYS additions in nax5-backend client_telemetry/schemas.py.
+static const QSet<QString> kBackendHealthKeys = {
+    "window_s", "loss_max_pct", "frames_lost", "bitrate_min_kbps", "bitrate_p50_kbps", "render_dropped_max",
+    "queue_max", "vps_sent", "vps_lost", "vps_rtt_p50_ms", "vps_rtt_p95_ms", "vps_rtt_max_ms", "vps_jitter_ms"};
+
+static void test_stream_health_window()
+{
+    Nax5StreamHealth health;
+    bool ready = false;
+    for (int i = 0; i < Nax5StreamHealth::kWindowSeconds; ++i)
+    {
+        Nax5StreamSecond s;
+        s.packet_loss = i == 7 ? 0.25 : 0.0;
+        s.frames_lost_total = 3 + (i >= 10 ? 2 : 0);
+        s.bitrate_kbps = 1000 * (i + 1);
+        s.render_dropped = i == 3 ? 4 : 0;
+        s.queue_depth = 1.5;
+        ready = health.add(s);
+        if (i < Nax5StreamHealth::kWindowSeconds - 1)
+            expect(!ready, "health window not ready early");
+    }
+    expect(ready, "health window ready after 20 seconds");
+    Nax5PathWindow path = nax5SummarizePath({5, 6, 40}, 200, 2);
+    const QJsonObject m = health.take(path);
+    expect(m.value("window_s").toString() == "20", "health window size");
+    expect(m.value("loss_max_pct").toString() == "25.00", "health max loss");
+    expect(m.value("frames_lost").toString() == "2", "health frames lost is a delta, not the total");
+    expect(m.value("bitrate_min_kbps").toString() == "1000", "health bitrate min");
+    expect(m.value("render_dropped_max").toString() == "4", "health render drops");
+    expect(m.value("vps_sent").toString() == "200" && m.value("vps_lost").toString() == "2", "health vps counts");
+    bool keys_ok = true;
+    for (const QString &key : m.keys())
+        keys_ok = keys_ok && kBackendHealthKeys.contains(key);
+    expect(keys_ok, "health keys are all on the backend allowlist");
+    expect(QJsonDocument(m).toJson(QJsonDocument::Compact).size() <= 512, "health metadata fits backend 512-byte limit");
+    expect(health.size() == 0, "take clears the window");
+
+    Nax5StreamSecond reset_stream;
+    reset_stream.frames_lost_total = 0; // new stream: counter restarted below the previous base
+    health.add(reset_stream);
+    expect(health.take(Nax5PathWindow()).value("frames_lost").toString() == "0", "frames lost never negative");
+}
+
+static void test_telemetry_metadata_batch()
+{
+    while (nax5QueuedClientEventCount() > 0)
+        nax5TakeQueuedClientEventBatch();
+    QJsonObject metadata;
+    metadata.insert("vps_lost", "3");
+    nax5QueueClientEvent(QStringLiteral("STREAM_HEALTH"), QString(), metadata);
+    const QByteArray body = nax5TakeQueuedClientEventBatch();
+    const QJsonObject event = QJsonDocument::fromJson(body).object().value("events").toArray().at(0).toObject();
+    expect(event.value("event_type").toString() == "STREAM_HEALTH", "health event type");
+    expect(event.value("metadata").toObject().value("vps_lost").toString() == "3", "health metadata in batch");
+    expect(!nax5ClientEventPayloadContainsSecrets(body), "health batch has no secrets");
+}
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+static qint64 processCpuMs()
+{
+    FILETIME c, e, k, u;
+    GetProcessTimes(GetCurrentProcess(), &c, &e, &k, &u);
+    auto ms = [](FILETIME f) { return qint64((quint64(f.dwHighDateTime) << 32 | f.dwLowDateTime) / 10000); };
+    return ms(k) + ms(u);
+}
+#else
+#include <ctime>
+static qint64 processCpuMs() { return qint64(std::clock() * 1000 / CLOCKS_PER_SEC); }
+#endif
+
+static void run_loop_ms(int ms)
+{
+    QEventLoop loop;
+    QTimer::singleShot(ms, &loop, &QEventLoop::quit);
+    loop.exec();
+}
+
+static void test_path_probe_local_echo()
+{
+    QUdpSocket echo;
+    expect(echo.bind(QHostAddress::LocalHost, 0), "local echo bound");
+    QObject::connect(&echo, &QUdpSocket::readyRead, [&echo]() {
+        while (echo.hasPendingDatagrams())
+        {
+            QByteArray data(int(echo.pendingDatagramSize()), '\0');
+            QHostAddress from;
+            quint16 port = 0;
+            echo.readDatagram(data.data(), data.size(), &from, &port);
+            echo.writeDatagram(data, from, port);
+        }
+    });
+    Nax5PathProbe probe;
+    probe.start(QStringLiteral("127.0.0.1"), echo.localPort());
+    run_loop_ms(3300);
+    const Nax5PathWindow w = probe.window(3);
+    QElapsedTimer stop_clock;
+    stop_clock.start();
+    probe.stop();
+    std::printf("  local echo: seconds=%d sent=%d received=%d lost=%d p50=%.2f\n", w.seconds, w.sent, w.received, w.lost, w.rtt_p50_ms);
+    expect(w.seconds == 3, "probe reports completed seconds");
+    expect(w.sent >= 27 && w.sent <= 33, "probe sends every 100 ms");
+    expect(w.lost == 0 && w.received >= 27, "probe gets local echoes");
+    expect(w.rtt_p50_ms >= 0 && w.rtt_p50_ms < 50, "probe measures RTT");
+    expect(stop_clock.elapsed() < 500, "probe stops promptly");
+    expect(!probe.running(), "probe not running after stop");
+
+    QUdpSocket closed;
+    closed.bind(QHostAddress::LocalHost, 0);
+    const quint16 dead_port = closed.localPort();
+    closed.close();
+    const qint64 cpu_before = processCpuMs();
+    probe.start(QStringLiteral("127.0.0.1"), dead_port);
+    run_loop_ms(2300);
+    const qint64 cpu_used = processCpuMs() - cpu_before;
+    std::printf("  dead port CPU: %lld ms over 2300 ms\n", (long long)cpu_used);
+    expect(cpu_used < 500, "probe does not spin when the port is closed");
+    const Nax5PathWindow dead = probe.window(2);
+    probe.stop();
+    std::printf("  dead port: sent=%d received=%d lost=%d\n", dead.sent, dead.received, dead.lost);
+    expect(dead.received == 0 && dead.lost > 0, "probe counts loss when nothing answers");
+}
+
+// Optional live check against the deployed VPS echo: NAX5_TEST_VPS_ECHO=host
+static void test_path_probe_live_vps()
+{
+    const QString host = qEnvironmentVariable("NAX5_TEST_VPS_ECHO");
+    if (host.isEmpty())
+        return;
+    Nax5PathProbe probe;
+    probe.start(host, Nax5PathProbe::kDefaultPort);
+    run_loop_ms(5300);
+    const Nax5PathWindow w = probe.window(5);
+    probe.stop();
+    std::printf("  live VPS %s: sent=%d received=%d lost=%d p50=%.2f p95=%.2f jitter=%.2f\n", qPrintable(host),
+        w.sent, w.received, w.lost, w.rtt_p50_ms, w.rtt_p95_ms, w.jitter_ms);
+    expect(w.sent >= 45 && w.received >= w.sent - 2, "live VPS echo answers the client probe");
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
@@ -359,5 +519,10 @@ int main(int argc, char **argv)
     test_full_session_is_not_silently_truncated();
     test_live_report_queue_batches_small_appends();
     test_queue_recovery_and_sanitization();
+    test_path_summary();
+    test_stream_health_window();
+    test_telemetry_metadata_batch();
+    test_path_probe_local_echo();
+    test_path_probe_live_vps();
     return g_failed == 0 ? 0 : 1;
 }

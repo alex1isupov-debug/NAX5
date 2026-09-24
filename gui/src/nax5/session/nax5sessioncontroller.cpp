@@ -3,6 +3,7 @@
 #include "nax5/connection/nax5connectionparser.h"
 #include "nax5/connection/nax5transienthost.h"
 #include "nax5/nax5apiclient.h"
+#include "nax5/nax5apiconfig.h"
 #include "nax5/nax5apilane.h"
 #include "nax5/nax5authcontroller.h"
 #include "nax5/nax5clientreport.h"
@@ -98,8 +99,8 @@ Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBacken
     telemetry_flush_timer->setSingleShot(true);
     telemetry_flush_timer->setInterval(kTelemetryFlushMs);
     connect(telemetry_flush_timer, &QTimer::timeout, this, &Nax5SessionController::flushTelemetry);
-    diagnostic_timer->setInterval(2000);
-    connect(diagnostic_timer, &QTimer::timeout, this, &Nax5SessionController::sampleStreamStats);
+    diagnostic_timer->setInterval(1000);
+    connect(diagnostic_timer, &QTimer::timeout, this, &Nax5SessionController::onDiagnosticTick);
     report_queue_timer->setInterval(1000);
     connect(report_queue_timer, &QTimer::timeout, this, &Nax5SessionController::serviceDiagnosticQueue);
     report_queue_timer->start();
@@ -163,6 +164,7 @@ Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBacken
 Nax5SessionController::~Nax5SessionController()
 {
     network_diagnostics.stop();
+    path_probe.stop();
     report_queue_timer->stop();
     report_worker->quit();
     report_worker->wait();
@@ -376,11 +378,11 @@ void Nax5SessionController::onAuthStateChanged()
     resetLocal();
 }
 
-void Nax5SessionController::emitTelemetry(const QString &event_type)
+void Nax5SessionController::emitTelemetry(const QString &event_type, const QJsonObject &metadata)
 {
     if (!auth || liveToken().isEmpty())
         return;
-    nax5QueueClientEvent(event_type, session_id);
+    nax5QueueClientEvent(event_type, session_id, metadata);
     if (nax5QueuedClientEventCount() >= kTelemetryBatchLimit)
         flushTelemetry();
     else
@@ -414,7 +416,7 @@ void Nax5SessionController::sampleStreamStats()
         diagnostic_duration_ms = diagnostic_clock.elapsed();
         const qint64 gap = diagnostic_duration_ms - diagnostic_last_sample_ms;
         diagnostic_last_sample_ms = diagnostic_duration_ms;
-        QJsonObject metric{{"schema", 2}, {"event", "stream_sample"},
+        QJsonObject metric{{"schema", 3}, {"event", "stream_sample"},
             {"session_id", diagnostic_session_id},
             {"utc", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
             {"elapsed_ms", double(diagnostic_duration_ms)}, {"sample_gap_ms", double(gap)},
@@ -430,8 +432,35 @@ void Nax5SessionController::sampleStreamStats()
             metric.insert("pending_frame_age_ms", 1000.0 * backend->qmlWindow()->pendingFrameAge());
             metric.insert("renderer_backend_enum", backend->qmlWindow()->runtimeRendererBackend());
         }
+        if (path_probe.running())
+        {
+            const Nax5PathWindow path = path_probe.window(1);
+            metric.insert("vps_sent", path.sent);
+            metric.insert("vps_lost", path.lost);
+            if (path.rtt_p50_ms >= 0)
+            {
+                metric.insert("vps_rtt_p50_ms", path.rtt_p50_ms);
+                metric.insert("vps_rtt_max_ms", path.rtt_max_ms);
+            }
+        }
         nax5ProcessLogWrite("nax5.metrics", QString::fromUtf8(QJsonDocument(metric).toJson(QJsonDocument::Compact)));
     }
+}
+
+void Nax5SessionController::onDiagnosticTick()
+{
+    sampleStreamStats();
+    if (!diagnostic_clock.isValid())
+        return;
+    Nax5StreamSecond second;
+    second.packet_loss = last_avg_packet_loss;
+    second.frames_lost_total = last_frames_lost;
+    second.bitrate_kbps = last_measured_bitrate_kbps;
+    second.render_dropped = last_dropped_frames;
+    if (backend && backend->qmlWindow())
+        second.queue_depth = backend->qmlWindow()->queueDepthAverage();
+    if (stream_health.add(second) && !isOperatorTest())
+        emitTelemetry(QStringLiteral("STREAM_HEALTH"), stream_health.take(path_probe.window(Nax5StreamHealth::kWindowSeconds)));
 }
 
 Nax5BuildInfoSnapshot Nax5SessionController::buildInfoSnapshot()
@@ -524,6 +553,7 @@ void Nax5SessionController::play()
     diagnostic_process_offset = QFileInfo(nax5ProcessLogPath()).size();
     diagnostic_timer->stop();
     network_diagnostics.stop();
+    path_probe.stop();
     diagnostic_clock.invalidate();
     diagnostic_duration_ms = 0;
     diagnostic_last_sample_ms = 0;
@@ -1208,6 +1238,9 @@ void Nax5SessionController::onStreamFirstFrame()
     stream_connected_at = QDateTime::currentDateTime();
     diagnostic_clock.start();
     network_diagnostics.start(diagnostic_session_id);
+    stream_health.reset();
+    if (!isOperatorTest())
+        path_probe.start(Nax5ApiConfig::baseUrl().host(), Nax5PathProbe::kDefaultPort);
     diagnostic_timer->start();
     sampleStreamStats();
     qCInfo(nax5SessionLog) << "first decoded frame, posting connected";
@@ -1269,6 +1302,7 @@ void Nax5SessionController::onStreamQuit(ChiakiQuitReason reason, const QString 
     Q_UNUSED(reason_str);
     if (sender() && diagnostic_stream && sender() != diagnostic_stream.data()) return;
     network_diagnostics.stop();
+    path_probe.stop();
     sampleStreamStats();
     if (diagnostic_clock.isValid()) diagnostic_duration_ms = diagnostic_clock.elapsed();
     diagnostic_clock.invalidate();

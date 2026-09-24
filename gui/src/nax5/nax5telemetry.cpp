@@ -99,8 +99,15 @@ bool nax5ClientEventPayloadContainsSecrets(const QByteArray &json)
 
 void nax5QueueClientEvent(const QString &event_type, const QString &session_public_id)
 {
+    nax5QueueClientEvent(event_type, session_public_id, QJsonObject());
+}
+
+void nax5QueueClientEvent(const QString &event_type, const QString &session_public_id, const QJsonObject &metadata)
+{
     QMutexLocker lock(&g_events_mutex);
-    const auto event = eventObject(event_type, session_public_id);
+    auto event = eventObject(event_type, session_public_id);
+    if (!metadata.isEmpty())
+        event.insert(QStringLiteral("metadata"), metadata);
     g_pending_events.append(event);
     // The full session log retains the event even if the separate analytics POST fails.
     nax5ProcessLogWrite("nax5.event", QString::fromUtf8(QJsonDocument(event).toJson(QJsonDocument::Compact)));

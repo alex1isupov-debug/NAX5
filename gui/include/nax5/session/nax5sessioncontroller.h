@@ -5,6 +5,8 @@
 #include "nax5/nax5reportqueue.h"
 #include "nax5/nax5processlog.h"
 #include "nax5/nax5networkhint.h"
+#include "nax5/nax5pathprobe.h"
+#include "nax5/nax5streamhealth.h"
 #include "nax5/session/nax5sessionerror.h"
 #include "nax5/session/nax5sessionlifecycle.h"
 #include "nax5/session/nax5sessionstate.h"
@@ -137,9 +139,10 @@ private:
     void submitClientReport(Nax5ClientReportKind kind);
     void flushPendingClientReport();
     void onClientReportFinished(quint64 request_id, int http_status);
-    void emitTelemetry(const QString &event_type);
+    void emitTelemetry(const QString &event_type, const QJsonObject &metadata = QJsonObject());
     void flushTelemetry();
     void sampleStreamStats();
+    void onDiagnosticTick();
     void beginDiagnosticReport();
     void serviceDiagnosticQueue();
     Nax5BuildInfoSnapshot buildInfoSnapshot();
@@ -151,6 +154,8 @@ private:
     QPointer<QmlBackend> backend;
     QPointer<StreamSession> diagnostic_stream;
     Nax5NetworkDiagnostics network_diagnostics;
+    Nax5PathProbe path_probe;
+    Nax5StreamHealth stream_health;
     Nax5ApiClient *api;
     QTimer *lease_timer;
     QTimer *heartbeat_timer;
