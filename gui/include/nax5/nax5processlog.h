@@ -38,6 +38,8 @@ struct Nax5BuildInfoSnapshot
 void nax5ProcessLogStart();
 void nax5ProcessLogWrite(const char *category, const QString &message);
 QString nax5ProcessLogPath();
+// nax5 log of the launcher run before this one (may have ended in a crash).
+QString nax5PreviousProcessLogPath();
 QString nax5ProcessLogTail(int max_bytes);
 QByteArray nax5ReadFileTailBytes(const QString &path, int max_bytes);
 QString nax5LatestChiakiSessionLogPath();

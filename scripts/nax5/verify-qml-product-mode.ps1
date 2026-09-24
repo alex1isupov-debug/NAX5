@@ -19,11 +19,12 @@ if ($operator -notmatch 'nax5ProvisionHost\(hostIndex,') { throw "Operator provi
 if ($play -notmatch 'Nax5Session.play\(\)') { throw "Play UI must stay visible in product" }
 if ($qrc -notmatch 'Nax5OperatorPanel.qml') { throw "Operator QML must be in qml.qrc" }
 if ($qrc -notmatch 'Nax5PlayPanel.qml') { throw "Play QML must be in qml.qrc" }
-if ($qrc -notmatch 'Nax5SettingsDialog.qml') { throw "Product settings dialog must be in qml.qrc" }
+if ($settings -notmatch 'id: profile\s+visible: Chiaki.operatorMode') { throw "Profiles must be operator-only" }
+if ($settings -notmatch 'id: controllers\s') { throw "Controllers tab must stay available in product" }
+if ($settings -notmatch 'Chiaki.settings.logVerbose') { throw "Settings must expose verbose logs toggle" }
 
-$nax5Settings = Get-Content -Raw (Join-Path $qml "Nax5SettingsDialog.qml")
-if ($nax5Settings -notmatch 'Подробные логи') { throw "Product settings must expose verbose logs toggle" }
-if ($nax5Settings -notmatch 'Chiaki.settings.logVerbose') { throw "Product verbose logs toggle must bind Chiaki.settings.logVerbose" }
+$main = Get-Content -Raw (Join-Path $qml "Main.qml")
+if ($main -notmatch 'function showSettingsDialog\(\) \{\s+stack.push\(settingsDialogComponent\);') { throw "Product must open the full settings dialog" }
 
-Write-Host "ok product QML hides Register/Consoles/PSN/export"
+Write-Host "ok product QML hides Register/Consoles/PSN/profiles/export"
 Write-Host "ok operator QML remains available behind operatorMode"

@@ -193,13 +193,6 @@ Item {
     }
 
     function showSettingsDialog() {
-        if (Chiaki.operatorMode)
-            stack.push(settingsDialogComponent);
-        else
-            stack.push(nax5SettingsDialogComponent);
-    }
-
-    function showChiakiSettingsDialog() {
         stack.push(settingsDialogComponent);
     }
 
@@ -642,11 +635,6 @@ Item {
     Component {
         id: manualHostDialogComponent
         ManualHostDialog { }
-    }
-
-    Component {
-        id: nax5SettingsDialogComponent
-        Nax5SettingsDialog { }
     }
 
     Component {

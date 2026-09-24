@@ -296,6 +296,23 @@ QString nax5ProcessLogPath()
     return g_path;
 }
 
+QString nax5PreviousProcessLogPath()
+{
+    const QString current = QFileInfo(nax5ProcessLogPath()).fileName();
+    const QString dir_str = GetLogBaseDir();
+    if (dir_str.isEmpty())
+        return QString();
+    QDir dir(dir_str);
+    // Names embed a sortable timestamp, so the name order is the start order.
+    const QStringList files = dir.entryList(QStringList() << QStringLiteral("nax5_*.log"), QDir::Files, QDir::Name | QDir::Reversed);
+    for (const QString &name : files)
+    {
+        if (name != current && (current.isEmpty() || name < current))
+            return dir.absoluteFilePath(name);
+    }
+    return QString();
+}
+
 QString nax5ProcessLogTail(int max_bytes)
 {
     QString path;

@@ -56,8 +56,7 @@ ULONG defaultRouteInterfaceIndex()
         const MIB_IPFORWARD_ROW2 &row = table->Table[i];
         if (row.DestinationPrefix.PrefixLength != 0)
             continue;
-        MIB_IPINTERFACE_ROW iface;
-        InitializeIpInterfaceEntry(&iface);
+        MIB_IPINTERFACE_ROW iface{};
         iface.Family = AF_INET;
         iface.InterfaceIndex = row.InterfaceIndex;
         if (GetIpInterfaceEntry(&iface) != NO_ERROR || !iface.Connected) continue;
@@ -71,10 +70,25 @@ ULONG defaultRouteInterfaceIndex()
 
 } // namespace
 
+bool nax5RunningUnderWine()
+{
+#ifdef Q_OS_WIN
+    static const bool wine = [] {
+        const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+        return ntdll && GetProcAddress(ntdll, "wine_get_version") != nullptr;
+    }();
+    return wine;
+#else
+    return false;
+#endif
+}
+
 Nax5NetworkHint nax5QueryNetworkHint()
 {
     Nax5NetworkHint hint;
 #ifdef Q_OS_WIN
+    if (nax5RunningUnderWine())
+        return hint;
     const ULONG flags = GAA_FLAG_INCLUDE_GATEWAYS | GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
     ULONG size = 16 * 1024;
     QByteArray buffer(static_cast<int>(size), 0);
@@ -134,6 +148,7 @@ QString nax5NetworkHintText(const Nax5NetworkHint &hint)
     else
         text += QStringLiteral("network_link_speed_mbps=\n");
     text += QStringLiteral("network_active=%1\n").arg(boolText(hint.active));
+    text += QStringLiteral("runtime_wine=%1\n").arg(boolText(nax5RunningUnderWine()));
     return text;
 }
 
@@ -173,8 +188,7 @@ bool defaultRoute(ULONG *interface_index, SOCKADDR_INET *gateway)
     {
         const MIB_IPFORWARD_ROW2 &row = table->Table[i];
         if (row.DestinationPrefix.PrefixLength != 0 || row.NextHop.si_family != AF_INET) continue;
-        MIB_IPINTERFACE_ROW iface;
-        InitializeIpInterfaceEntry(&iface);
+        MIB_IPINTERFACE_ROW iface{};
         iface.Family = AF_INET;
         iface.InterfaceIndex = row.InterfaceIndex;
         if (GetIpInterfaceEntry(&iface) != NO_ERROR || !iface.Connected) continue;
@@ -346,6 +360,11 @@ void Nax5NetworkDiagnostics::start(const QString &session_id)
 {
     stop();
     { QMutexLocker lock(&impl->mutex); impl->value = Nax5NetworkDiagnosticsSummary(); }
+    if (nax5RunningUnderWine())
+    {
+        nax5ProcessLogWrite("nax5.network", QStringLiteral("network diagnostics disabled under Wine"));
+        return;
+    }
     impl->worker.reset(new Impl::Worker(impl.get(), session_id));
     impl->worker->start(QThread::LowPriority);
 }

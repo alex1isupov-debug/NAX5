@@ -24,6 +24,7 @@ const int kMaxJsonBytes = 256 * 1024;
 const int kMaxArchiveBytes = 1536 * 1024;
 const int kNax5ArchiveTailBytes = 256 * 1024;
 const int kPreviousChiakiTailBytes = 128 * 1024;
+const int kPreviousNax5TailBytes = 128 * 1024;
 
 void appendU16(QByteArray &out, quint16 value)
 {
@@ -81,6 +82,7 @@ QList<QPair<QString, QByteArray>> reportFiles(Nax5ClientReportKind kind, const N
     files.append(qMakePair(QStringLiteral("BUILD-INFO"), build_info));
 
     const QString nax5_path = nax5ProcessLogPath();
+    const QString previous_nax5_path = nax5PreviousProcessLogPath();
     const QStringList chiaki_paths = nax5RecentChiakiSessionLogPaths(bounded ? 2 : 5);
 
     if (bounded)
@@ -103,11 +105,19 @@ QList<QPair<QString, QByteArray>> reportFiles(Nax5ClientReportKind kind, const N
                 QFileInfo(chiaki_paths.at(1)).fileName(),
                 nax5ReadFileTailBytes(chiaki_paths.at(1), kPreviousChiakiTailBytes)));
         }
+        if (!previous_nax5_path.isEmpty())
+        {
+            files.append(qMakePair(
+                QFileInfo(previous_nax5_path).fileName(),
+                nax5ReadFileTailBytes(previous_nax5_path, kPreviousNax5TailBytes)));
+        }
         return nax5FitReportFiles(files, kMaxArchiveBytes);
     }
 
     if (!nax5_path.isEmpty())
         files.append(qMakePair(QFileInfo(nax5_path).fileName(), fileBytes(nax5_path)));
+    if (!previous_nax5_path.isEmpty())
+        files.append(qMakePair(QFileInfo(previous_nax5_path).fileName(), fileBytes(previous_nax5_path)));
     for (const QString &chiaki_path : chiaki_paths)
     {
         if (chiaki_path.isEmpty())

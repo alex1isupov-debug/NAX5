@@ -90,7 +90,7 @@ DialogView {
     function focusCurrentTabFirstItem() {
         let item = null;
         switch (bar.currentIndex) {
-        case 0: item = disconnectAction; break;
+        case 0: item = Chiaki.operatorMode ? disconnectAction : audioVideoCombo; break;
         case 1: item = hwDecoderCombo; break;
         case 2: item = consoleSelection; break;
         case 3: item = audioOutDevice; break;
@@ -98,7 +98,7 @@ DialogView {
         case 5: item = resetAllKeys; break;
         case 6: item = controllerMappingChange; break;
         case 7: item = firstRemoteFocusableItem(); break;
-        case 8: item = profile; break;
+        case 8: item = Chiaki.operatorMode ? profile : aboutButton; break;
         }
         if (item)
             item.forceActiveFocus(Qt.TabFocusReason);
@@ -600,7 +600,9 @@ DialogView {
                         }
 
                         C.ComboBox {
+                            id: audioVideoCombo
                             Layout.preferredWidth: 400
+                            firstInFocusChain: !Chiaki.operatorMode
                             model: [qsTr("Audio and Video Enabled"), qsTr("Audio Disabled"), qsTr("Video Disabled"), qsTr("Audio and Video Disabled")]
                             currentIndex: Chiaki.settings.audioVideoDisabled
                             onActivated: index => Chiaki.settings.audioVideoDisabled = index
@@ -3026,6 +3028,7 @@ DialogView {
                         columnSpacing: 10
 
                         Label {
+                            visible: Chiaki.operatorMode
                             text: {
                                 if(Chiaki.settings.currentProfile)
                                     qsTr("Current Profile: ") + Chiaki.settings.currentProfile
@@ -3036,6 +3039,7 @@ DialogView {
 
                         C.Button {
                             id: profile
+                            visible: Chiaki.operatorMode
                             firstInFocusChain: true
                             text: qsTr("Manage Profiles")
                             onClicked: {
@@ -3066,6 +3070,7 @@ DialogView {
 
                     C.Button {
                         id: aboutButton
+                        firstInFocusChain: !Chiaki.operatorMode
                         text: qsTr("About %1-ng").arg(Qt.application.name)
                         onClicked: aboutDialog.open()
                         Material.roundedScale: Material.SmallScale

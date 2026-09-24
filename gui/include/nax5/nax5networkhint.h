@@ -12,6 +12,10 @@ struct Nax5NetworkHint
     bool active = false;
 };
 
+// Wine/Proton ships IP Helper stubs that abort the process when called,
+// so all IP Helper diagnostics are skipped there.
+bool nax5RunningUnderWine();
+
 Nax5NetworkHint nax5QueryNetworkHint();
 QString nax5NetworkHintText(const Nax5NetworkHint &hint);
 
