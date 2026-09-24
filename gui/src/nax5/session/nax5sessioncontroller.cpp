@@ -690,11 +690,12 @@ bool Nax5SessionController::retryTerminalIfNeeded(const Nax5SessionParseResult &
         return false;
     if (pending_terminal.generation != generation)
         return false;
-    if (result.error != Nax5SessionErrorNetworkError)
+    if (!nax5TerminalShouldRetry(result.error))
         return false;
     if (pending_terminal.attempts >= nax5TerminalRetryLimit())
         return false;
-    QTimer::singleShot(200, this, &Nax5SessionController::sendPendingTerminal);
+    qCWarning(nax5SessionLog) << "terminal retry" << static_cast<int>(result.error) << "attempt" << pending_terminal.attempts;
+    QTimer::singleShot(nax5TerminalRetryDelayMs(pending_terminal.attempts), this, &Nax5SessionController::sendPendingTerminal);
     return true;
 }
 
@@ -833,8 +834,10 @@ void Nax5SessionController::flushPendingClientReport()
         || client_report_request_id != 0 || api->hasLane(Nax5ApiLaneReport)
         || QDateTime::currentMSecsSinceEpoch() < report_retry_at)
         return;
-    // Sending full logs must not compete with reservation, handshake, or gameplay.
-    if ((!diagnostic_report_id.isEmpty() && !diagnostic_finalized) || streamSessionAlive()) return;
+    // Sending full logs must not compete with reservation, handshake, gameplay,
+    // or an unacknowledged /end/ or /fail/ (concurrent uploads deadlocked the backend).
+    if ((!diagnostic_report_id.isEmpty() && !diagnostic_finalized) || streamSessionAlive()
+        || pending_terminal.mutation != Nax5TerminalMutationNone) return;
     uploading_part = nax5NextReportPart(nax5ReportQueueRoot(), auth->userId());
     if (uploading_part.path.isEmpty()) return;
     client_report_request_id = api->postClientReportArchive(liveToken(),

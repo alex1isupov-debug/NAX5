@@ -228,7 +228,12 @@ static void test_shutdown_and_stale_lifecycle()
     expect(!nax5AcceptAsync(2, 2, 0, 9), "cleared request ignored");
     expect(nax5AcceptSessionIdentity(QStringLiteral("session-a"), QStringLiteral("session-a")), "same session");
     expect(!nax5AcceptSessionIdentity(QStringLiteral("session-b"), QStringLiteral("session-a")), "session b ignores a");
-    expect(nax5TerminalRetryLimit() >= 2, "bounded retries");
+    expect(nax5TerminalRetryLimit() >= 2 && nax5TerminalRetryLimit() <= 6, "bounded retries");
+    expect(nax5TerminalShouldRetry(Nax5SessionErrorServerError), "terminal retries 5xx");
+    expect(nax5TerminalShouldRetry(Nax5SessionErrorNetworkError), "terminal retries network errors");
+    expect(!nax5TerminalShouldRetry(Nax5SessionErrorNotFound), "terminal does not retry 404");
+    expect(!nax5TerminalShouldRetry(Nax5SessionErrorUnauthenticated), "terminal does not retry 401");
+    expect(nax5TerminalRetryDelayMs(1) > 0 && nax5TerminalRetryDelayMs(9) <= 1200, "bounded retry delay");
     expect(nax5ShutdownGraceMs() > 0 && nax5ShutdownGraceMs() <= 1000, "short shutdown window");
     expect(nax5ShutdownReportGraceMs() >= 5000 && nax5ShutdownReportGraceMs() <= 15000, "report upload shutdown window");
 }

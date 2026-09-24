@@ -84,7 +84,17 @@ bool nax5AcceptSessionIdentity(const QString &live_session_id, const QString &ev
 
 int nax5TerminalRetryLimit()
 {
-    return 2;
+    return 4;
+}
+
+bool nax5TerminalShouldRetry(Nax5SessionError error)
+{
+    return error == Nax5SessionErrorNetworkError || error == Nax5SessionErrorServerError;
+}
+
+int nax5TerminalRetryDelayMs(int attempt)
+{
+    return 300 * qBound(1, attempt, 4);
 }
 
 int nax5ShutdownGraceMs()

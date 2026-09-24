@@ -26,6 +26,9 @@ bool nax5PlayEligibilityOk(bool authenticated, bool email_verified, const QStrin
 bool nax5AcceptAsync(quint64 live_generation, quint64 event_generation, quint64 live_request_id, quint64 event_request_id);
 bool nax5AcceptSessionIdentity(const QString &live_session_id, const QString &event_session_id);
 int nax5TerminalRetryLimit();
+// Network failures and 5xx (e.g. a backend deadlock) leave the session occupied; retry them.
+bool nax5TerminalShouldRetry(Nax5SessionError error);
+int nax5TerminalRetryDelayMs(int attempt);
 int nax5ShutdownGraceMs();
 int nax5ShutdownReportGraceMs();
 bool nax5MaySleepConsole(bool operator_mode);
