@@ -12,6 +12,7 @@
 #include "nax5/nax5processlog.h"
 #include "nax5/nax5runtime.h"
 #include "nax5/session/nax5sessionparser.h"
+#include "controllermanager.h"
 #include "qmlbackend.h"
 #include "qmlmainwindow.h"
 #include "settings.h"
@@ -125,6 +126,9 @@ Nax5SessionController::Nax5SessionController(Nax5AuthController *auth, QmlBacken
     connect(api, &Nax5ApiClient::connectionFinished, this, &Nax5SessionController::onConnectionFinished);
     connect(api, &Nax5ApiClient::connectedFinished, this, &Nax5SessionController::onConnectedFinished);
     connect(api, &Nax5ApiClient::heartbeatFinished, this, &Nax5SessionController::onHeartbeatFinished);
+    // Any gamepad button, stick or touchpad event: lets the logs tell an AFK player
+    // from a playing one (input_idle_s in stream_sample).
+    connect(ControllerManager::GetInstance(), &ControllerManager::ControllerMoved, this, [this]() { last_input_clock.start(); });
     connect(api, &Nax5ApiClient::failFinished, this, &Nax5SessionController::onFailFinished);
     connect(api, &Nax5ApiClient::endFinished, this, &Nax5SessionController::onEndFinished);
     connect(api, &Nax5ApiClient::clientReportFinished, this, &Nax5SessionController::onClientReportFinished);
@@ -430,6 +434,8 @@ void Nax5SessionController::sampleStreamStats()
             {"packet_loss_rolling_fraction", last_avg_packet_loss},
             {"frames_lost_total", last_frames_lost}, {"render_dropped_recent_1s", last_dropped_frames},
             {"measured_bitrate_kbps", double(last_measured_bitrate_kbps)}};
+        // Seconds since the last gamepad input in this stream (counted from the first frame).
+        metric.insert("input_idle_s", last_input_clock.isValid() ? double(last_input_clock.elapsed() / 1000) : -1.0);
         metric.insert("ps5_path_rtt_ms", session->GetInitialRttUs() / 1000.0);
         metric.insert("ps5_path_mtu_in", double(session->GetMtuIn()));
         metric.insert("ps5_path_mtu_out", double(session->GetMtuOut()));
@@ -462,6 +468,19 @@ void Nax5SessionController::onDiagnosticTick()
     session_totals.add(second);
     if (stream_health.add(second) && !isOperatorTest())
         emitTelemetry(QStringLiteral("STREAM_HEALTH"), stream_health.take(path_probe.window(Nax5StreamHealth::kWindowSeconds)));
+    if (!stream_stalled && session_state == Nax5GameSessionStateActive && last_frame_clock.isValid()
+        && nax5StreamStalled(stream_first_frame_seen, last_frame_clock.elapsed()))
+        stopStalledStream();
+}
+
+void Nax5SessionController::stopStalledStream()
+{
+    // Normal stop, as if the player pressed Disconnect: onStreamQuit posts /end/
+    // and uploads the report, and the console is freed for the next player.
+    qCWarning(nax5SessionLog) << "no frame decoded for" << last_frame_clock.elapsed() << "ms, stopping stream";
+    stream_stalled = true;
+    if (streamSessionAlive())
+        backend->stopSession(false);
 }
 
 Nax5BuildInfoSnapshot Nax5SessionController::buildInfoSnapshot()
@@ -1035,6 +1054,8 @@ void Nax5SessionController::startStream()
     }
     pending_start_stream = false;
     stream_generation = generation;
+    stream_stalled = false;
+    last_frame_clock.invalidate();
     StreamSessionConnectInfo info;
     if (!nax5FillStreamSessionConnectInfo(backend->chiakiSettings(), material, &info))
     {
@@ -1292,6 +1313,8 @@ void Nax5SessionController::onStreamFirstFrame()
 {
     if (stream_generation != generation)
         return;
+    // Emitted for every decoded frame: feeds the stalled-stream check in onDiagnosticTick().
+    last_frame_clock.start();
     if (stream_first_frame_seen)
         return;
     if (!backend || !backend->qmlSession())
@@ -1303,6 +1326,7 @@ void Nax5SessionController::onStreamFirstFrame()
     diagnostic_stream_connected = true;
     stream_connected_at = QDateTime::currentDateTime();
     diagnostic_clock.start();
+    last_input_clock.start();
     network_diagnostics.start(diagnostic_session_id);
     stream_health.reset();
     if (!isOperatorTest())
@@ -1347,8 +1371,31 @@ void Nax5SessionController::onHeartbeatFinished(quint64 request_id, const Nax5Se
         return;
     if (session_state != Nax5GameSessionStateActive)
         return;
+    if (nax5HeartbeatSessionClosed(result.error))
+    {
+        endSessionClosedByBackend();
+        return;
+    }
     sampleStreamStats();
     scheduleHeartbeat(result.error == Nax5SessionErrorNone ? kHeartbeatIntervalMs : kHeartbeatRetryMs);
+}
+
+void Nax5SessionController::endSessionClosedByBackend()
+{
+    // The backend already ended this session (admin, expiry) and may hand the
+    // console to someone else: stop streaming instead of heartbeating a 404 forever.
+    qCWarning(nax5SessionLog) << "heartbeat: session closed by backend, stopping stream";
+    // New generation: onStreamQuit still uploads the quit report but posts no /end/.
+    bumpGeneration();
+    heartbeat_timer->stop();
+    heartbeat_request_id = 0;
+    discardMaterial();
+    clearAssignment();
+    setError(Nax5SessionErrorNone);
+    setStatusText(QStringLiteral("Сессия завершена сервером"));
+    setState(nax5SessionReduce(session_state, Nax5GameSessionActionStreamEnded));
+    if (streamSessionAlive())
+        backend->stopSession(false);
 }
 
 static Nax5SessionError errorFromQuitReason(ChiakiQuitReason reason)
@@ -1369,7 +1416,6 @@ static Nax5SessionError errorFromQuitReason(ChiakiQuitReason reason)
 
 void Nax5SessionController::onStreamQuit(ChiakiQuitReason reason, const QString &reason_str)
 {
-    Q_UNUSED(reason_str);
     if (sender() && diagnostic_stream && sender() != diagnostic_stream.data()) return;
     network_diagnostics.stop();
     path_probe.stop();
@@ -1401,7 +1447,8 @@ void Nax5SessionController::onStreamQuit(ChiakiQuitReason reason, const QString 
     qCInfo(nax5SessionLog) << "stream quit"
                            << "reason" << static_cast<int>(reason)
                            << (handshake_timeout ? "timeout" : "other")
-                           << (connected_this_play ? "connected" : "never-connected");
+                           << (connected_this_play ? "connected" : "never-connected")
+                           << reason_str;
     discardMaterial();
     if (session_state == Nax5GameSessionStateIdle
         || session_state == Nax5GameSessionStateError
@@ -1414,7 +1461,7 @@ void Nax5SessionController::onStreamQuit(ChiakiQuitReason reason, const QString 
         if (mutation == Nax5TerminalMutationEnd)
             reportEnd();
         setState(nax5SessionReduce(session_state, Nax5GameSessionActionStreamEnded));
-        setStatusText(QString());
+        setStatusText(stream_stalled ? QStringLiteral("Консоль перестала передавать изображение") : QString());
         operator_test_active = false;
         clearAssignment();
         return;
